@@ -23,7 +23,7 @@ public static class CombatResolver
         ArgumentNullException.ThrowIfNull(random);
 
         int roll = random.Next(-1, 2);
-        int damage = Math.Max(1, attacker.Attack - defender.Defense + roll);
+        int damage = Math.Max(1, attacker.TotalAttack - defender.TotalDefense + roll);
         defender.Hp = Math.Max(0, defender.Hp - damage);
         return new CombatResult(attacker, defender, damage, !defender.IsAlive);
     }

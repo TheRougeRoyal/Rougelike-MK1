@@ -15,6 +15,10 @@ public abstract class Actor
     public int Attack { get; protected set; }
     /// <summary>Gets the actor's defense stat.</summary>
     public int Defense { get; protected set; }
+    /// <summary>Gets total attack including actor-specific bonuses.</summary>
+    public virtual int TotalAttack => Attack;
+    /// <summary>Gets total defense including actor-specific bonuses.</summary>
+    public virtual int TotalDefense => Defense;
     /// <summary>Gets or sets the actor's map position.</summary>
     public Point Position { get; set; }
     /// <summary>Gets whether the actor is alive.</summary>
@@ -39,7 +43,11 @@ public abstract class Actor
 public sealed class PlayerActor : Actor
 {
     /// <summary>Creates a player with the Phase 2 starting statistics.</summary>
-    public PlayerActor(Point position) : base("Player", position, 30, 5, 1) { }
+    public PlayerActor(Point position) : base("Player", position, 30, 5, 1)
+    {
+        Inventory = new Inventory();
+        Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.HealingPotion)));
+    }
 
     /// <summary>Gets the current level.</summary>
     public int Level { get; internal set; } = 1;
@@ -49,6 +57,21 @@ public sealed class PlayerActor : Actor
     public int ExperienceToNextLevel => 20 * Level;
     /// <summary>Gets the player's glyph.</summary>
     public override char Glyph => '@';
+    /// <summary>Gets the player's inventory.</summary>
+    public Inventory Inventory { get; }
+    /// <summary>Gets active timed effects.</summary>
+    public List<StatusEffect> Effects { get; } = new();
+    /// <summary>Gets the equipped weapon, if any.</summary>
+    public ItemInstance? EquippedWeapon { get; internal set; }
+    /// <summary>Gets the equipped armor, if any.</summary>
+    public ItemInstance? EquippedArmor { get; internal set; }
+    /// <inheritdoc />
+    public override int TotalAttack => Attack +
+        (EquippedWeapon?.Definition.AttackBonus ?? 0) +
+        Effects.Where(effect => effect.Type == StatusEffectType.Strength)
+            .Sum(effect => effect.Magnitude);
+    /// <inheritdoc />
+    public override int TotalDefense => Defense + (EquippedArmor?.Definition.DefenseBonus ?? 0);
 
     /// <summary>Heals ten points, capped at maximum hit points.</summary>
     public int Heal() => Heal(10);

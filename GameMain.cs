@@ -20,6 +20,8 @@ public sealed class GameMain : Game
     private SpriteBatch? spriteBatch;
     private GameRenderer? renderer;
     private GameState? state;
+    private bool inventoryOpen;
+    private int inventoryCursor;
 
     /// <summary>
     /// Initializes the game with a deterministic random seed.
@@ -56,7 +58,31 @@ public sealed class GameMain : Game
     protected override void Update(GameTime gameTime)
     {
         KeyboardState currentKeyboardState = Keyboard.GetState();
-        if (WasPressed(currentKeyboardState, Keys.Escape))
+        if (WasPressed(currentKeyboardState, Keys.I))
+        {
+            inventoryOpen = !inventoryOpen;
+        }
+        else if (inventoryOpen && state is not null)
+        {
+            if (WasPressed(currentKeyboardState, Keys.Escape))
+                inventoryOpen = false;
+            else if (WasPressed(currentKeyboardState, Keys.Up) || WasPressed(currentKeyboardState, Keys.W))
+                inventoryCursor = Math.Max(0, inventoryCursor - 1);
+            else if (WasPressed(currentKeyboardState, Keys.Down) || WasPressed(currentKeyboardState, Keys.S))
+                inventoryCursor = Math.Min(Math.Max(0, state.Player.Inventory.Items.Count - 1), inventoryCursor + 1);
+            else if (WasPressed(currentKeyboardState, Keys.Enter) && inventoryCursor < state.Player.Inventory.Items.Count)
+            {
+                ItemType type = state.Player.Inventory.Items[inventoryCursor].Definition.Type;
+                state.Process(type == ItemType.Consumable
+                    ? GameAction.UseItem(inventoryCursor) : GameAction.EquipItem(inventoryCursor));
+            }
+            else if (WasPressed(currentKeyboardState, Keys.D) && inventoryCursor < state.Player.Inventory.Items.Count)
+                state.Process(GameAction.DropItem(inventoryCursor));
+            else if (WasPressed(currentKeyboardState, Keys.U))
+                state.Process(GameAction.UnequipSlot(inventoryCursor == 0 ? 0 : 1));
+            inventoryCursor = Math.Clamp(inventoryCursor, 0, Math.Max(0, state.Player.Inventory.Items.Count - 1));
+        }
+        else if (WasPressed(currentKeyboardState, Keys.Escape))
         {
             Exit();
         }
@@ -80,8 +106,16 @@ public sealed class GameMain : Game
         }
 
         if (state is not null)
-            Window.Title = $"Seed {seed}  Depth {state.Depth}  HP {state.Player.Hp}/{state.Player.MaxHp}  " +
-                $"Level {state.Player.Level} XP {state.Player.Experience}/{state.Player.ExperienceToNextLevel} - {state.Message}";
+        {
+            if (inventoryOpen && state.Player.Inventory.Items.Count > 0)
+            {
+                ItemInstance item = state.Player.Inventory.Items[Math.Clamp(inventoryCursor, 0, state.Player.Inventory.Items.Count - 1)];
+                Window.Title = $"{item.Definition.Name} - {item.Definition.Description} x{item.Count}";
+            }
+            else
+                Window.Title = $"Seed {seed}  Depth {state.Depth}  HP {state.Player.Hp}/{state.Player.MaxHp}  " +
+                    $"Level {state.Player.Level} XP {state.Player.Experience}/{state.Player.ExperienceToNextLevel} - {state.Message}";
+        }
         previousKeyboardState = currentKeyboardState;
         base.Update(gameTime);
     }
@@ -94,7 +128,7 @@ public sealed class GameMain : Game
         {
             renderer.Draw(state.Dungeon, state.Player, state.Monsters, state.Depth,
                 state.Player.Level, state.Player.Experience, state.Message, state.FeedbackTint,
-                state.FeedbackActor);
+                state.FeedbackActor, state.FloorItems, inventoryOpen, inventoryCursor);
         }
 
         base.Draw(gameTime);

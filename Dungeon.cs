@@ -114,6 +114,20 @@ public sealed class Dungeon
     /// <param name="position">The tile position.</param>
     public bool IsVisible(Point position) => InBounds(position) && visible[position.X, position.Y];
 
+    /// <summary>Reveals all walkable tiles and their adjacent walls without making them visible.</summary>
+    public void RevealAll()
+    {
+        for (int y = 0; y < Height; y++)
+        for (int x = 0; x < Width; x++)
+        {
+            Point point = new(x, y);
+            if (!IsWalkable(point)) continue;
+            explored[x, y] = true;
+            foreach (Point neighbor in Neighbors(point))
+                if (InBounds(neighbor)) explored[neighbor.X, neighbor.Y] = true;
+        }
+    }
+
     /// <summary>
     /// Returns whether a position is inside the map.
     /// </summary>

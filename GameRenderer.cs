@@ -52,7 +52,8 @@ public sealed class GameRenderer
     public void Draw(
         Dungeon dungeon, PlayerActor player, IReadOnlyList<MonsterActor> monsters,
         int depth, int level, int experience, string message, Color feedbackTint,
-        Actor? feedbackActor = null)
+        Actor? feedbackActor = null, IReadOnlyList<FloorItem>? floorItems = null,
+        bool inventoryOpen = false, int inventoryCursor = -1)
     {
         spriteBatch.Begin(samplerState: SamplerState.PointClamp);
 
@@ -69,6 +70,18 @@ public sealed class GameRenderer
                 bool lit = dungeon.IsVisible(position);
                 Color tileColor = GetTileColor(dungeon[position], lit);
                 DrawRectangle(new Rectangle(x * tileSize, y * tileSize, tileSize, tileSize), tileColor);
+            }
+        }
+
+        if (floorItems is not null)
+        {
+            foreach (FloorItem floorItem in floorItems)
+            {
+                if (!dungeon.IsVisible(floorItem.Position)) continue;
+                int size = Math.Max(4, tileSize / 2);
+                int inset = (tileSize - size) / 2;
+                DrawRectangle(new Rectangle(floorItem.Position.X * tileSize + inset,
+                    floorItem.Position.Y * tileSize + inset, size, size), floorItem.Item.Definition.Color);
             }
         }
 
@@ -109,6 +122,45 @@ public sealed class GameRenderer
             Math.Max(0, 120 * experience / Math.Max(1, player.ExperienceToNextLevel)), 8), Color.CornflowerBlue);
         for (int index = 0; index < Math.Min(level, 30); index++)
             DrawRectangle(new Rectangle(8 + index * 8, hudTop + 22, 5, 8), Color.Gold);
+        DrawRectangle(new Rectangle(280, hudTop + 8, 12, 12),
+            player.EquippedWeapon is null ? Color.DarkGray : player.EquippedWeapon.Definition.Color);
+        DrawRectangle(new Rectangle(300, hudTop + 8, 12, 12),
+            player.EquippedArmor is null ? Color.DarkGray : player.EquippedArmor.Definition.Color);
+        StatusEffect? strength = player.Effects.FirstOrDefault(effect => effect.Type == StatusEffectType.Strength);
+        if (strength is not null)
+        {
+            DrawRectangle(new Rectangle(320, hudTop + 8, 12, 12), Color.Orange);
+            DrawRectangle(new Rectangle(336, hudTop + 8,
+                Math.Max(1, 40 * strength.RemainingTurns / 20), 6), Color.Orange);
+        }
+
+        if (inventoryOpen)
+        {
+            DrawRectangle(new Rectangle(80, 50, 800, 400), new Color(10, 10, 18, 230));
+            for (int index = 0; index < player.Inventory.Capacity; index++)
+            {
+                int x = 100 + (index % 5) * 80;
+                int y = 75 + (index / 5) * 80;
+                DrawRectangle(new Rectangle(x, y, 48, 48), Color.DarkSlateGray);
+                if (index < player.Inventory.Items.Count)
+                {
+                    DrawRectangle(new Rectangle(x + 8, y + 8, 32, 32), player.Inventory.Items[index].Definition.Color);
+                    for (int pip = 0; pip < Math.Min(5, player.Inventory.Items[index].Count); pip++)
+                        DrawRectangle(new Rectangle(x + 5 + pip * 7, y + 40, 5, 4), Color.White);
+                }
+                if (index == inventoryCursor)
+                {
+                    DrawRectangle(new Rectangle(x, y, 48, 3), Color.White);
+                    DrawRectangle(new Rectangle(x, y + 45, 48, 3), Color.White);
+                    DrawRectangle(new Rectangle(x, y, 3, 48), Color.White);
+                    DrawRectangle(new Rectangle(x + 45, y, 3, 48), Color.White);
+                }
+            }
+            DrawRectangle(new Rectangle(100, 250, 48, 48),
+                player.EquippedWeapon is null ? Color.DarkGray : player.EquippedWeapon.Definition.Color);
+            DrawRectangle(new Rectangle(180, 250, 48, 48),
+                player.EquippedArmor is null ? Color.DarkGray : player.EquippedArmor.Definition.Color);
+        }
 
         spriteBatch.End();
     }
