@@ -6,10 +6,20 @@ namespace Roguelike;
 public enum ItemType { Consumable, Weapon, Armor }
 
 /// <summary>Stable identifiers for catalog items.</summary>
-public enum ItemId
+public readonly record struct ItemId(string Value)
 {
-    HealingPotion, GreaterHealingPotion, PotionOfStrength, ScrollOfTeleportation, ScrollOfMapping,
-    Dagger, ShortSword, BattleAxe, LeatherArmor, ChainMail, PlateArmor
+    public static readonly ItemId HealingPotion = new("healing_potion");
+    public static readonly ItemId GreaterHealingPotion = new("greater_healing_potion");
+    public static readonly ItemId PotionOfStrength = new("potion_of_strength");
+    public static readonly ItemId ScrollOfTeleportation = new("scroll_of_teleportation");
+    public static readonly ItemId ScrollOfMapping = new("scroll_of_mapping");
+    public static readonly ItemId Dagger = new("dagger");
+    public static readonly ItemId ShortSword = new("short_sword");
+    public static readonly ItemId BattleAxe = new("battle_axe");
+    public static readonly ItemId LeatherArmor = new("leather_armor");
+    public static readonly ItemId ChainMail = new("chain_mail");
+    public static readonly ItemId PlateArmor = new("plate_armor");
+    public override string ToString() => Value;
 }
 
 /// <summary>Immutable data-driven item definition.</summary>
@@ -71,7 +81,7 @@ public static class ItemCatalog
     /// <summary>Gets a definition by identifier.</summary>
     public static ItemDefinition Get(ItemId id) => definitions.First(definition => definition.Id == id);
     /// <summary>Returns a weighted, depth-appropriate item.</summary>
-    public static ItemDefinition Choose(int depth, Random random)
+    public static ItemDefinition Choose(int depth, IRandom random)
     {
         ItemDefinition[] available = definitions.Where(item => item.MinDepth <= depth).ToArray();
         int total = available.Sum(item => item.Weight);

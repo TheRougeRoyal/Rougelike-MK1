@@ -6,7 +6,8 @@ namespace Roguelike;
 public enum UiCommandKind
 {
     None, Move, Wait, Accept, Cancel, Quit, Start, Help, CloseHelp, Pause, Resume, Restart,
-    ConfirmRestart, CancelRestart, Inventory, Drop, UnequipWeapon, UnequipArmor, MenuUp, MenuDown
+    ConfirmRestart, CancelRestart, Inventory, Drop, UnequipWeapon, UnequipArmor, MenuUp, MenuDown,
+    NewRun, NewRunWithSeed, RunHistory, SaveAndQuit, AbandonRun
 }
 
 /// <summary>A keyboard-independent UI command.</summary>
@@ -27,6 +28,7 @@ public sealed class InputMapper
         ["Right"] = new(1, 0), ["D"] = new(1, 0), ["NumPad6"] = new(1, 0)
     };
     private string? heldDirection;
+    private string? lastPressedDirection;
     private TimeSpan heldFor;
 
     /// <summary>Maps a frame of plain pressed-key names.</summary>
@@ -37,7 +39,11 @@ public sealed class InputMapper
         bool movementContext = screen == ScreenKind.Playing && overlay == UiOverlay.None;
         if (movementContext)
         {
-            string? direction = directions.Keys.FirstOrDefault(current.Contains);
+            foreach (string candidate in directions.Keys)
+                if (current.Contains(candidate) && !previous.Contains(candidate))
+                    lastPressedDirection = candidate;
+            string? direction = lastPressedDirection is not null && current.Contains(lastPressedDirection)
+                ? lastPressedDirection : directions.Keys.FirstOrDefault(current.Contains);
             if (direction is null)
             {
                 heldDirection = null;
@@ -64,6 +70,8 @@ public sealed class InputMapper
 
         if (screen == ScreenKind.Title)
         {
+            if (pressed("Up") || pressed("W")) return new UiCommand(UiCommandKind.MenuUp);
+            if (pressed("Down") || pressed("S")) return new UiCommand(UiCommandKind.MenuDown);
             if (pressed("Enter")) return new UiCommand(UiCommandKind.Start);
             if (pressed("H")) return new UiCommand(UiCommandKind.Help);
             if (pressed("Escape")) return new UiCommand(UiCommandKind.Quit);

@@ -31,7 +31,7 @@ public readonly record struct GameAction(ActionKind Kind, Point Direction, int S
 public sealed class GameState
 {
     private readonly int runSeed;
-    private Random gameplayRandom;
+    private IRandom gameplayRandom;
     private readonly List<MonsterActor> monsters = new();
     private readonly List<FloorItem> floorItems = new();
     private readonly TurnManager turnManager = new();
@@ -44,7 +44,7 @@ public sealed class GameState
         runSeed = seed;
         Width = width;
         Height = height;
-        gameplayRandom = new Random(CreateGameplaySeed(seed));
+        gameplayRandom = RandomStreams.Create(seed, 0, 0x47504C59UL);
         ResetRun();
         if (startingDepth > 1)
         {
@@ -94,7 +94,9 @@ public sealed class GameState
     /// <summary>Restarts the run, including gameplay RNG.</summary>
     public void Restart() => ResetRun();
 
-    internal Random GameplayRandom => gameplayRandom;
+    internal IRandom GameplayRandom => gameplayRandom;
+    /// <summary>Gets the serializable gameplay RNG state.</summary>
+    public ulong GameplayRandomState => gameplayRandom.State;
     internal List<MonsterActor> MutableMonsters => monsters;
 
     internal void ResetRun()
@@ -102,7 +104,7 @@ public sealed class GameState
         Depth = 1;
         TurnNumber = 0;
         Status = GameStatus.Playing;
-        gameplayRandom = new Random(CreateGameplaySeed(runSeed));
+        gameplayRandom = RandomStreams.Create(runSeed, 0, 0x47504C59UL);
         RunStats.Reset();
         MessageLog.Clear();
         monsters.Clear();
@@ -118,7 +120,7 @@ public sealed class GameState
 
     private void CreateLevel(bool resetPlayer)
     {
-        Dungeon = new Dungeon(Width, Height, new Random(CreateLevelSeed(runSeed, Depth)));
+        Dungeon = new Dungeon(Width, Height, RandomStreams.Create(runSeed, Depth, 0x4C455645UL));
         if (resetPlayer)
         {
             Player = new PlayerActor(Dungeon.PlayerStart);
@@ -145,7 +147,7 @@ public sealed class GameState
 
     internal void SpawnMonsters()
     {
-        Random levelMonsterRandom = new(CreateMonsterSeed(runSeed, Depth));
+        IRandom levelMonsterRandom = RandomStreams.Create(runSeed, Depth, 0x4D4F4E53UL);
         int targetCount = Math.Min(12, 2 + Depth * 2);
         List<Point> candidates = new();
         for (int y = 1; y < Dungeon.Height - 1; y++)
@@ -157,8 +159,8 @@ public sealed class GameState
                 Distance(point, Dungeon.PlayerStart) >= 8)
                 candidates.Add(point);
         }
-        MonsterDefinition[] available = new MonsterDefinition[4];
-        int availableCount = MonsterCatalog.CopyForDepth(Depth, available);
+        MonsterDefinition[] available = MonsterCatalog.All.Where(item => item.MinDepth <= Depth).ToArray();
+        int availableCount = available.Length;
         for (int i = 0; i < targetCount && candidates.Count > 0; i++)
         {
             int index = levelMonsterRandom.Next(candidates.Count);
@@ -248,14 +250,17 @@ public sealed class GameState
         floorItems.Clear();
         Dungeon.UpdateFieldOfView(Player.Position);
     }
+    internal void RestoreGameplayRandomState(ulong state) => gameplayRandom.State = state;
 
-    internal void SetGameplayRandomForTesting(Random random)
+    internal void SetGameplayRandomForTesting(IRandom random)
     {
         gameplayRandom = random ?? throw new ArgumentNullException(nameof(random));
     }
+    internal void SetGameplayRandomForTesting(Random random) =>
+        SetGameplayRandomForTesting(new RandomAdapter(random));
     internal void ConsumeGameplayRandomForTesting(int draws)
     {
-        for (int i = 0; i < Math.Max(0, draws); i++) gameplayRandom.Next();
+        for (int i = 0; i < Math.Max(0, draws); i++) gameplayRandom.Next(int.MaxValue);
     }
     internal ulong ComputeStateHash()
     {
@@ -267,24 +272,32 @@ public sealed class GameState
         Mix(Player.TotalAttack); Mix(Player.TotalDefense);
         foreach (ItemInstance item in Player.Inventory.Items)
         {
-            Mix((int)item.Definition.Id); Mix(item.Count);
+            MixString(item.Definition.Id.Value); Mix(item.Count);
         }
-        Mix((int)(Player.EquippedWeapon?.Definition.Id ?? (ItemId)(-1)));
-        Mix((int)(Player.EquippedArmor?.Definition.Id ?? (ItemId)(-1)));
+        MixString(Player.EquippedWeapon?.Definition.Id.Value ?? string.Empty);
+        MixString(Player.EquippedArmor?.Definition.Id.Value ?? string.Empty);
         foreach (StatusEffect effect in Player.Effects)
         {
             Mix((int)effect.Type); Mix(effect.Magnitude); Mix(effect.RemainingTurns);
         }
         foreach (FloorItem item in floorItems.OrderBy(item => item.Position.Y).ThenBy(item => item.Position.X))
         {
-            Mix(item.Position.X); Mix(item.Position.Y); Mix((int)item.Item.Definition.Id); Mix(item.Item.Count);
+            Mix(item.Position.X); Mix(item.Position.Y);             MixString(item.Item.Definition.Id.Value); Mix(item.Item.Count);
         }
         for (int i = 0; i < monsters.Count; i++)
         {
             MonsterActor monster = monsters[i];
-            Mix((int)monster.Definition.Type); Mix(monster.Position.X); Mix(monster.Position.Y); Mix(monster.Hp);
+            MixString(monster.Definition.Type.ToString()); Mix(monster.Position.X); Mix(monster.Position.Y); Mix(monster.Hp);
         }
+        Mix(unchecked((int)gameplayRandom.State));
+        Mix(unchecked((int)(gameplayRandom.State >> 32)));
         return hash;
+
+        void MixString(string value)
+        {
+            foreach (char character in value) Mix(character);
+            Mix(0);
+        }
     }
 
     private static int Distance(Point a, Point b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);

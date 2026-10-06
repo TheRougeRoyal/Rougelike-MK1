@@ -9,7 +9,7 @@ public static class LootSpawner
     public static List<FloorItem> Spawn(Dungeon dungeon, int depth, int seed,
         Point playerStart, IReadOnlyList<MonsterActor> monsters)
     {
-        Random random = new(GameState.CreateLootSeed(seed, depth));
+        IRandom random = RandomStreams.Create(seed, depth, 0x4C4F4F54UL);
         List<Point> candidates = new();
         for (int y = 0; y < dungeon.Height; y++)
         for (int x = 0; x < dungeon.Width; x++)

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Roguelike.Content;
 
 namespace Roguelike;
 
@@ -13,7 +14,16 @@ public static class Program
     /// <param name="args">Optional first argument containing an integer seed.</param>
     public static void Main(string[] args)
     {
-        int seed = ParseSeed(args);
+        (int seed, string? contentDirectory) = ParseOptions(args);
+        try
+        {
+            _ = contentDirectory is null ? ContentDatabase.LoadDefault() : ContentDatabase.LoadDirectory(contentDirectory);
+        }
+        catch (ContentLoadException exception)
+        {
+            Console.Error.WriteLine($"Content validation failed:{Environment.NewLine}{exception.Message}");
+            return;
+        }
         Console.WriteLine($"Using dungeon seed: {seed}");
         Console.WriteLine($"Using gameplay seed: {GameState.CreateGameplaySeed(seed)}");
 
@@ -21,13 +31,20 @@ public static class Program
         game.Run();
     }
 
-    private static int ParseSeed(string[] args)
+    private static (int Seed, string? ContentDirectory) ParseOptions(string[] args)
     {
-        if (args.Length > 0 && int.TryParse(args[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int seed))
+        int seed = Random.Shared.Next();
+        string? content = null;
+        for (int index = 0; index < args.Length; index++)
         {
-            return seed;
+            if (args[index] == "--seed" && index + 1 < args.Length &&
+                int.TryParse(args[++index], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+                seed = parsed;
+            else if (args[index] == "--content" && index + 1 < args.Length)
+                content = args[++index];
+            else if (index == 0 && int.TryParse(args[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed))
+                seed = parsed;
         }
-
-        return Random.Shared.Next();
+        return (seed, content);
     }
 }

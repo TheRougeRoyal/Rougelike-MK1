@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 2,
+  "startingHp": 30,
+  "startingAttack": 5,
+  "startingDefense": 1,
+  "spawnBase": 2,
+  "spawnPerDepth": 2
+}

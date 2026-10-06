@@ -16,7 +16,7 @@ public static class CombatResolver
     /// <param name="attacker">The attacking actor.</param>
     /// <param name="defender">The defending actor.</param>
     /// <param name="random">The gameplay random source.</param>
-    public static CombatResult Resolve(Actor attacker, Actor defender, Random random)
+    public static CombatResult Resolve(Actor attacker, Actor defender, IRandom random)
     {
         ArgumentNullException.ThrowIfNull(attacker);
         ArgumentNullException.ThrowIfNull(defender);
@@ -27,4 +27,8 @@ public static class CombatResolver
         defender.Hp = Math.Max(0, defender.Hp - damage);
         return new CombatResult(attacker, defender, damage, !defender.IsAlive);
     }
+
+    /// <summary>Compatibility overload for legacy callers.</summary>
+    public static CombatResult Resolve(Actor attacker, Actor defender, Random random) =>
+        Resolve(attacker, defender, new RandomAdapter(random));
 }

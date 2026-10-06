@@ -53,7 +53,7 @@ public sealed class Dungeon
     /// <param name="width">The dungeon width in tiles.</param>
     /// <param name="height">The dungeon height in tiles.</param>
     /// <param name="random">The seeded random source.</param>
-    public Dungeon(int width, int height, Random random)
+    public Dungeon(int width, int height, IRandom random)
     {
         Width = width;
         Height = height;
@@ -62,6 +62,9 @@ public sealed class Dungeon
         explored = new bool[width, height];
         Generate(random);
     }
+
+    /// <summary>Compatibility constructor for older callers.</summary>
+    public Dungeon(int width, int height, Random random) : this(width, height, new RandomAdapter(random)) { }
 
     /// <summary>Creates a dungeon from a hand-built tile matrix.</summary>
     /// <param name="map">Tiles indexed by x then y.</param>
@@ -198,7 +201,7 @@ public sealed class Dungeon
         }
     }
 
-    private void Generate(Random random)
+    private void Generate(IRandom random)
     {
         for (int attempt = 0; attempt < MaximumGenerationAttempts; attempt++)
         {

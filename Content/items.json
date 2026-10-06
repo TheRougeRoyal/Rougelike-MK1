@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 2,
+  "items": [
+    { "id": "healing_potion", "name": "Healing Potion", "description": "Restores 15 HP.", "glyph": "!", "color": "#FF0000", "type": "consumable", "minDepth": 1, "weight": 30, "maxStack": 5, "effects": [ { "type": "heal", "amount": 15 } ] },
+    { "id": "greater_healing_potion", "name": "Greater Healing Potion", "description": "Restores 35 HP.", "glyph": "!", "color": "#FF00FF", "type": "consumable", "minDepth": 3, "weight": 12, "maxStack": 5, "effects": [ { "type": "heal", "amount": 35 } ] },
+    { "id": "potion_of_strength", "name": "Potion of Strength", "description": "Grants +3 Attack for 20 turns.", "glyph": "!", "color": "#FFA500", "type": "consumable", "minDepth": 1, "weight": 14, "maxStack": 5, "effects": [ { "type": "buff", "stat": "attack", "amount": 3, "turns": 20 } ] },
+    { "id": "scroll_of_teleportation", "name": "Scroll of Teleportation", "description": "Teleports to a safe distant tile.", "glyph": "?", "color": "#00FFFF", "type": "consumable", "minDepth": 1, "weight": 8, "maxStack": 5, "effects": [ { "type": "teleport", "minDistance": 6 } ] },
+    { "id": "scroll_of_mapping", "name": "Scroll of Mapping", "description": "Reveals the current level.", "glyph": "?", "color": "#FFFF00", "type": "consumable", "minDepth": 1, "weight": 7, "maxStack": 5, "effects": [ { "type": "reveal_map" } ] },
+    { "id": "dagger", "name": "Dagger", "description": "+1 Attack.", "glyph": "/", "color": "#D3D3D3", "type": "weapon", "slot": "weapon", "attackBonus": 1, "minDepth": 1, "weight": 15, "maxStack": 1 },
+    { "id": "short_sword", "name": "Short Sword", "description": "+2 Attack.", "glyph": "/", "color": "#C0C0C0", "type": "weapon", "slot": "weapon", "attackBonus": 2, "minDepth": 1, "weight": 10, "maxStack": 1 },
+    { "id": "battle_axe", "name": "Battle Axe", "description": "+4 Attack.", "glyph": "/", "color": "#8B0000", "type": "weapon", "slot": "weapon", "attackBonus": 4, "minDepth": 4, "weight": 5, "maxStack": 1 },
+    { "id": "leather_armor", "name": "Leather Armor", "description": "+1 Defense.", "glyph": "[", "color": "#8B4513", "type": "armor", "slot": "armor", "defenseBonus": 1, "minDepth": 1, "weight": 15, "maxStack": 1 },
+    { "id": "chain_mail", "name": "Chain Mail", "description": "+2 Defense.", "glyph": "[", "color": "#808080", "type": "armor", "slot": "armor", "defenseBonus": 2, "minDepth": 3, "weight": 9, "maxStack": 1 },
+    { "id": "plate_armor", "name": "Plate Armor", "description": "+4 Defense.", "glyph": "[", "color": "#2F4F4F", "type": "armor", "slot": "armor", "defenseBonus": 4, "minDepth": 5, "weight": 4, "maxStack": 1 },
+    { "id": "antidote", "name": "Antidote", "description": "A new JSON-only item.", "glyph": "!", "color": "#00FF00", "type": "consumable", "minDepth": 1, "weight": 3, "maxStack": 5, "effects": [ { "type": "heal", "amount": 1 } ] }
+  ]
+}

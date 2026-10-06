@@ -1,7 +1,7 @@
 namespace Roguelike;
 
 /// <summary>UI-layer screens.</summary>
-public enum ScreenKind { Title, Playing, Paused, GameOver, Help }
+public enum ScreenKind { Title, Playing, Paused, GameOver, Help, SeedEntry, RunHistory }
 /// <summary>Whether the playing screen has an overlay.</summary>
 public enum UiOverlay { None, Inventory, Examine, RestartConfirmation }
 
@@ -115,7 +115,8 @@ public sealed class ScreenStateMachine
     public bool MoveMenu(int delta)
     {
         if (Screen != ScreenKind.Paused) return false;
-        MenuIndex = (MenuIndex + delta + 4) % 4;
+        int count = Screen == ScreenKind.Title ? 6 : 4;
+        MenuIndex = (MenuIndex + delta + count) % count;
         return true;
     }
 }

@@ -101,4 +101,14 @@ public sealed class PlayerActor : Actor
         }
         return leveled;
     }
+
+    internal void Restore(int level, int experience, int hp, int maxHp, int attack, int defense)
+    {
+        Level = level;
+        Experience = experience;
+        Hp = hp;
+        MaxHp = maxHp;
+        Attack = attack;
+        Defense = defense;
+    }
 }

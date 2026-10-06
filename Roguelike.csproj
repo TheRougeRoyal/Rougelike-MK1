@@ -15,4 +15,7 @@
     <Compile Remove="Roguelike.Tests/**/*.cs" />
     <None Remove="Roguelike.Tests/**/*.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Content/*.json" />
+  </ItemGroup>
 </Project>
