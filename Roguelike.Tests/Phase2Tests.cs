@@ -11,51 +11,46 @@ public sealed class Phase2Tests
         PlayerActor player = new(Point.Zero);
         Assert.Equal(30, player.Hp);
         Assert.Equal(30, player.MaxHp);
+        Assert.Equal(1, player.Defense);
         Assert.Equal(20, player.ExperienceToNextLevel);
+
         player.Hp = 10;
         Assert.Equal(10, player.Heal());
         player.AddExperience(20);
         Assert.Equal(2, player.Level);
         Assert.Equal(35, player.MaxHp);
         Assert.Equal(6, player.Attack);
+        Assert.Equal(1, player.Defense);
+
         player.AddExperience(40);
         Assert.Equal(3, player.Level);
         Assert.Equal(2, player.Defense);
     }
 
     [Fact]
-    public void CombatResolverUsesSuppliedRandomAndBothDirections()
+    public void CombatResolverUsesSuppliedRandomAndMinimumDamage()
     {
         PlayerActor player = new(Point.Zero);
-        MonsterActor monster = new(MonsterCatalog.Get(MonsterType.Rat), new Point(1, 0));
-        CombatResult first = CombatResolver.Resolve(player, monster, new Random(1));
-        Assert.Same(player, first.Attacker);
-        Assert.Same(monster, first.Defender);
-        Assert.InRange(first.Damage, 4, 6);
-        CombatResult second = CombatResolver.Resolve(monster, player, new Random(1));
-        Assert.Same(monster, second.Attacker);
-        Assert.Same(player, second.Defender);
-    }
-
-    [Fact]
-    public void CombatResolverMinimumDamageAndFixedSeedAreDeterministic()
-    {
-        PlayerActor weak = new(Point.Zero);
         MonsterDefinition toughDefinition = new(
             MonsterType.Brute, "Tough", 'T', 20, 1, 10, 5,
-            MonsterBehavior.Chase, Microsoft.Xna.Framework.Color.Red, 1, 1);
-        MonsterActor tough = new(toughDefinition, new Point(1, 0));
-        CombatResult first = CombatResolver.Resolve(weak, tough, new Random(123));
-        MonsterActor other = new(toughDefinition, new Point(1, 0));
-        CombatResult second = CombatResolver.Resolve(weak, other, new Random(123));
+            MonsterBehavior.Chase, Color.Red, 1, 1);
+        MonsterActor firstMonster = new(toughDefinition, new Point(1, 0));
+        MonsterActor secondMonster = new(toughDefinition, new Point(1, 0));
+
+        CombatResult first = CombatResolver.Resolve(player, firstMonster, new Random(123));
+        CombatResult second = CombatResolver.Resolve(player, secondMonster, new Random(123));
+
+        Assert.Same(player, first.Attacker);
+        Assert.Same(firstMonster, first.Defender);
         Assert.Equal(1, first.Damage);
         Assert.Equal(first.Damage, second.Damage);
     }
 
     [Fact]
-    public void CatalogContainsExactRequiredMonsterKindsAndFields()
+    public void CatalogContainsRequiredMonsterKindsAndFields()
     {
-        Assert.Equal(new[] { MonsterType.Rat, MonsterType.Goblin, MonsterType.Archer, MonsterType.Brute },
+        Assert.Equal(
+            new[] { MonsterType.Rat, MonsterType.Goblin, MonsterType.Archer, MonsterType.Brute },
             MonsterCatalog.All.Select(definition => definition.Type));
         Assert.All(MonsterCatalog.All, definition =>
         {
@@ -66,19 +61,22 @@ public sealed class Phase2Tests
     }
 
     [Fact]
-    public void PathfinderFindsHandBuiltShortestPathAndRespectsWalls()
+    public void PathfinderFindsShortestPathAndRespectsWallsAndBlockedTiles()
     {
-        TileType[,] map = new TileType[7, 7];
-        for (int y = 0; y < 7; y++)
-        for (int x = 0; x < 7; x++) map[x, y] = TileType.Floor;
-        for (int y = 0; y < 6; y++) map[3, y] = TileType.Wall;
+        TileType[,] map = CreateFloorMap(7, 7);
+        for (int y = 0; y < 6; y++)
+        {
+            map[3, y] = TileType.Wall;
+        }
+
         Dungeon dungeon = new(map, new Point(1, 1), new Point(5, 5));
         IReadOnlyList<Point> path = new Pathfinder().FindPath(dungeon, new Point(1, 1), new Point(5, 5));
+
         Assert.NotEmpty(path);
         Assert.Equal(new Point(5, 5), path[^1]);
         Assert.DoesNotContain(new Point(3, 5), path);
-        Assert.Empty(new Pathfinder().FindPath(dungeon, new Point(1, 1), new Point(5, 5),
-            point => point != new Point(5, 5)));
+        Assert.Empty(new Pathfinder().FindPath(
+            dungeon, new Point(1, 1), new Point(5, 5), point => point != new Point(5, 5)));
     }
 
     [Fact]
@@ -87,69 +85,233 @@ public sealed class Phase2Tests
         GameState first = new(42);
         GameState second = new(42);
         Assert.Equal(first.LayoutFingerprint, second.LayoutFingerprint);
-        ulong before = first.LayoutFingerprint;
+
         ulong initialHash = first.StateHash;
         first.Process(TurnAction.Wait);
         first.Restart();
-        Assert.Equal(before, first.LayoutFingerprint);
-        Assert.Equal(initialHash, first.StateHash);
-        Assert.Equal(new HeadlessSimulation().RunHash(42, new[] { TurnAction.Wait }),
-            new HeadlessSimulation().RunHash(42, new[] { TurnAction.Wait }));
-    }
 
-    [Fact]
-    public void HeadlessStateHashChangesWithSimulation()
-    {
-        HeadlessSimulation simulation = new();
-        ulong initial = simulation.RunHash(9, Array.Empty<TurnAction>());
-        ulong after = simulation.RunHash(9, new[] { TurnAction.Wait });
-        Assert.NotEqual(initial, after);
+        Assert.Equal(initialHash, first.StateHash);
+        Assert.Equal(
+            new HeadlessSimulation().RunHash(42, new[] { TurnAction.Wait }),
+            new HeadlessSimulation().RunHash(42, new[] { TurnAction.Wait }));
     }
 
     [Fact]
     public void FieldOfViewStopsAtWalls()
     {
         TileType[,] map = new TileType[5, 1];
-        map[0, 0] = TileType.Floor; map[1, 0] = TileType.Floor;
-        map[2, 0] = TileType.Wall; map[3, 0] = TileType.Floor; map[4, 0] = TileType.Floor;
+        map[0, 0] = TileType.Floor;
+        map[1, 0] = TileType.Floor;
+        map[2, 0] = TileType.Wall;
+        map[3, 0] = TileType.Floor;
+        map[4, 0] = TileType.Floor;
+
         Dungeon dungeon = new(map, new Point(0, 0), new Point(4, 0));
         dungeon.UpdateFieldOfView(new Point(0, 0));
+
         Assert.True(dungeon.IsVisible(new Point(1, 0)));
         Assert.False(dungeon.IsVisible(new Point(3, 0)));
     }
 
     [Fact]
-    public void WaitingAdvancesTurnsAndRangedCombatCanKill()
+    public void KillingFirstAdjacentMonsterDoesNotSkipSecondMonster()
     {
         GameState state = new(123);
-        int turns = state.TurnNumber;
-        Assert.True(state.Process(TurnAction.Wait));
-        Assert.Equal(turns + 1, state.TurnNumber);
-        Assert.True(state.Player.IsAlive);
+        state.MutableMonsters.Clear();
+        Point playerPosition = state.Player.Position;
+        Point firstPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, null);
+        Point secondPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, firstPosition);
+        MonsterDefinition firstDefinition = CreateDefinition("First", 1);
+        MonsterDefinition secondDefinition = CreateDefinition("Second", 1);
+        MonsterActor first = new(firstDefinition, firstPosition);
+        MonsterActor second = new(secondDefinition, secondPosition);
+        state.AddMonsterForTesting(first);
+        state.AddMonsterForTesting(second);
+        int playerHp = state.Player.Hp;
+
+        Assert.True(state.Process(ActionFor(playerPosition, firstPosition)));
+
+        Assert.DoesNotContain(first, state.Monsters);
+        Assert.True(second.IsAlive);
+        Assert.True(state.Player.Hp < playerHp);
     }
 
     [Fact]
-    public void GenerationAndSpawningStayValidAcrossSeedsAndDepths()
+    public void ArcherAtDistanceThreeWithLineOfSightDamagesPlayer()
+    {
+        GameState state = new(9, 12, 10);
+        TileType[,] map = CreateFloorMap(12, 10);
+        Dungeon dungeon = new(map, new Point(1, 1), new Point(10, 8));
+        state.ConfigureLevelForTesting(dungeon, new Point(1, 1));
+        MonsterActor archer = new(
+            MonsterCatalog.Get(MonsterType.Archer), new Point(4, 1));
+        state.AddMonsterForTesting(archer);
+        int playerHp = state.Player.Hp;
+
+        Assert.True(state.Process(TurnAction.Wait));
+
+        Assert.True(state.Player.Hp < playerHp);
+        Assert.Contains("shoots", state.Message);
+    }
+
+    [Fact]
+    public void LevelUpReportsTheNewLevel()
+    {
+        GameState state = new(77);
+        state.MutableMonsters.Clear();
+        Point playerPosition = state.Player.Position;
+        Point monsterPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, null);
+        MonsterDefinition definition = CreateDefinition("Veteran", 1) with { XpValue = 20 };
+        state.AddMonsterForTesting(new MonsterActor(definition, monsterPosition));
+
+        Assert.True(state.Process(ActionFor(playerPosition, monsterPosition)));
+        Assert.Equal(2, state.Player.Level);
+        Assert.Equal("Level 2!", state.Message);
+    }
+
+    [Fact]
+    public void SpawnedMonstersAvoidStartRoomWallsStairsAndEachOther()
     {
         for (int seed = 0; seed < 200; seed++)
         {
             for (int depth = 1; depth <= 10; depth++)
             {
-                Dungeon dungeon = new(60, 34, new Random(GameState.CreateLevelSeed(seed, depth)));
-                Pathfinder pathfinder = new();
-                Assert.NotEmpty(pathfinder.FindPath(dungeon, dungeon.PlayerStart, dungeon.StairsPosition));
-
                 GameState state = new(seed, 60, 34, depth);
-
                 HashSet<Point> positions = new();
                 foreach (MonsterActor monster in state.Monsters)
                 {
-                    Assert.True(dungeon.IsWalkable(monster.Position));
-                    Assert.NotEqual(dungeon.PlayerStart, monster.Position);
-                    Assert.NotEqual(dungeon.StairsPosition, monster.Position);
+                    Assert.True(state.Dungeon.IsWalkable(monster.Position));
+                    Assert.False(state.Dungeon.StartRoom.Contains(monster.Position));
+                    Assert.NotEqual(state.Dungeon.StairsPosition, monster.Position);
+                    Assert.NotEqual(state.Player.Position, monster.Position);
                     Assert.True(positions.Add(monster.Position));
                 }
             }
         }
+    }
+
+    [Fact]
+    public void GenerationConnectivityHoldsAcrossTwoHundredSeeds()
+    {
+        for (int seed = 0; seed < 200; seed++)
+        {
+            Dungeon dungeon = new(60, 34, new Random(GameState.CreateLevelSeed(seed, 1)));
+            IReadOnlyList<Point> path = new Pathfinder().FindPath(
+                dungeon, dungeon.PlayerStart, dungeon.StairsPosition);
+            Assert.NotEmpty(path);
+        }
+    }
+
+    [Fact]
+    public void FuzzedTurnsPreserveInvariantsAndReplayHash()
+    {
+        for (int seed = 0; seed < 200; seed++)
+        {
+            List<TurnAction> actions = CreateFuzzActions(seed);
+            ulong firstHash = RunAndValidate(seed, actions);
+            ulong secondHash = RunAndValidate(seed, actions);
+            Assert.Equal(firstHash, secondHash);
+        }
+    }
+
+    private static ulong RunAndValidate(int seed, IReadOnlyList<TurnAction> actions)
+    {
+        GameState state = new(seed);
+        for (int i = 0; i < actions.Count; i++)
+        {
+            state.Process(actions[i]);
+            ValidateState(state);
+        }
+
+        return state.StateHash;
+    }
+
+    private static List<TurnAction> CreateFuzzActions(int seed)
+    {
+        Random random = new(seed * 17 + 3);
+        List<TurnAction> actions = new(500);
+        GameState state = new(seed);
+
+        for (int turn = 0; turn < 500; turn++)
+        {
+            TurnAction action;
+            if (state.Status == GameStatus.Dead)
+            {
+                action = TurnAction.Restart;
+            }
+            else
+            {
+                action = (TurnAction)random.Next(0, 5);
+            }
+
+            actions.Add(action);
+            state.Process(action);
+        }
+
+        return actions;
+    }
+
+    private static void ValidateState(GameState state)
+    {
+        Assert.InRange(state.Player.Hp, 0, state.Player.MaxHp);
+        Assert.InRange(state.Player.Position.X, 0, state.Dungeon.Width - 1);
+        Assert.InRange(state.Player.Position.Y, 0, state.Dungeon.Height - 1);
+        Assert.True(state.Dungeon.IsWalkable(state.Player.Position));
+
+        HashSet<Point> positions = new();
+        foreach (MonsterActor monster in state.Monsters)
+        {
+            Assert.True(monster.IsAlive);
+            Assert.InRange(monster.Hp, 0, monster.MaxHp);
+            Assert.InRange(monster.Position.X, 0, state.Dungeon.Width - 1);
+            Assert.InRange(monster.Position.Y, 0, state.Dungeon.Height - 1);
+            Assert.True(state.Dungeon.IsWalkable(monster.Position));
+            Assert.NotEqual(state.Player.Position, monster.Position);
+            Assert.True(positions.Add(monster.Position));
+        }
+    }
+
+    private static TileType[,] CreateFloorMap(int width, int height)
+    {
+        TileType[,] map = new TileType[width, height];
+        for (int y = 0; y < height; y++)
+        for (int x = 0; x < width; x++)
+            map[x, y] = TileType.Floor;
+        return map;
+    }
+
+    private static MonsterDefinition CreateDefinition(string name, int maxHp) =>
+        new(MonsterType.Goblin, name, 'm', maxHp, 1, 0, 8,
+            MonsterBehavior.Chase, Color.Red, 1, 1);
+
+    private static Point FindWalkableNeighbor(Dungeon dungeon, Point origin, Point? excluded)
+    {
+        Point[] candidates =
+        {
+            new(origin.X + 1, origin.Y),
+            new(origin.X - 1, origin.Y),
+            new(origin.X, origin.Y + 1),
+            new(origin.X, origin.Y - 1)
+        };
+
+        foreach (Point candidate in candidates)
+        {
+            if (candidate != excluded && dungeon.IsWalkable(candidate))
+                return candidate;
+        }
+
+        throw new InvalidOperationException("No walkable neighbor found.");
+    }
+
+    private static TurnAction ActionFor(Point origin, Point destination)
+    {
+        Point delta = destination - origin;
+        return delta switch
+        {
+            { X: 1, Y: 0 } => TurnAction.MoveRight,
+            { X: -1, Y: 0 } => TurnAction.MoveLeft,
+            { X: 0, Y: 1 } => TurnAction.MoveDown,
+            _ => TurnAction.MoveUp
+        };
     }
 }

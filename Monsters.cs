@@ -13,12 +13,6 @@ public sealed record MonsterDefinition(
     MonsterType Type, string Name, char Glyph, int MaxHp, int Attack, int Defense,
     int SightRadius, MonsterBehavior Behavior, Color Color, int MinDepth, int XpValue)
 {
-    /// <summary>Compatibility alias for maximum hit points.</summary>
-    public int MaxHealth => MaxHp;
-    /// <summary>Compatibility alias for experience value.</summary>
-    public int Experience => XpValue;
-    /// <summary>Compatibility alias for minimum depth.</summary>
-    public int MinimumDepth => MinDepth;
 }
 
 /// <summary>Built-in monster catalog.</summary>
@@ -66,6 +60,8 @@ public sealed class MonsterActor : Actor
     public MonsterDefinition Definition { get; }
     /// <summary>Gets or sets turns remaining in alert memory.</summary>
     public int AlertTurns { get; internal set; }
+    /// <summary>Gets the last player position seen by this monster.</summary>
+    public Point? LastKnownPlayerPosition { get; internal set; }
     /// <summary>Gets the glyph.</summary>
     public override char Glyph => Definition.Glyph;
 }

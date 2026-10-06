@@ -33,10 +33,6 @@ public abstract class Actor
         Defense = defense;
     }
 
-    /// <summary>Compatibility alias for current hit points.</summary>
-    public int Health { get => Hp; internal set => Hp = value; }
-    /// <summary>Compatibility alias for maximum hit points.</summary>
-    public int MaxHealth { get => MaxHp; internal set => MaxHp = value; }
 }
 
 /// <summary>The player-controlled actor.</summary>

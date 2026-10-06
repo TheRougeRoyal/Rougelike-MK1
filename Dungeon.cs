@@ -78,6 +78,7 @@ public sealed class Dungeon
         explored = new bool[Width, Height];
         PlayerStart = playerStart;
         StairsPosition = stairsPosition;
+        StartRoom = new Rectangle(playerStart.X, playerStart.Y, 1, 1);
         LayoutFingerprint = ComputeLayoutFingerprint();
     }
 
@@ -85,6 +86,11 @@ public sealed class Dungeon
     /// Gets the generated player start position.
     /// </summary>
     public Point PlayerStart { get; private set; }
+
+    /// <summary>
+    /// Gets the room containing the player start position.
+    /// </summary>
+    public Rectangle StartRoom { get; private set; }
 
     /// <summary>
     /// Gets the generated stairs position.
@@ -214,6 +220,7 @@ public sealed class Dungeon
             }
 
             PlayerStart = rooms[0].Center;
+            StartRoom = rooms[0];
             StairsPosition = rooms[^1].Center;
             tiles[StairsPosition.X, StairsPosition.Y] = TileType.Stairs;
 

@@ -13,13 +13,7 @@ public sealed class TurnManager
         if (action == TurnAction.Restart) { state.Restart(); return false; }
         if (state.Status != GameStatus.Playing) return false;
 
-        bool consumed = action == TurnAction.Wait || action == TurnAction.Heal;
-        if (action == TurnAction.Heal)
-        {
-            int healed = state.Player.Heal();
-            state.SetFeedback(healed > 0 ? $"You heal {healed} HP." : "You are already at full health.",
-                Microsoft.Xna.Framework.Color.LightGreen);
-        }
+        bool consumed = action == TurnAction.Wait;
         Point direction = Direction(action);
         if (direction != Point.Zero)
         {
@@ -33,9 +27,15 @@ public sealed class TurnManager
                     target);
                 if (result.Killed)
                 {
+                    int previousLevel = state.Player.Level;
                     state.Player.AddExperience(target.Definition.XpValue);
                     state.SetFeedback($"{target.Name} dies. +{target.Definition.XpValue} XP.",
                         Microsoft.Xna.Framework.Color.Gold, target);
+                    if (state.Player.Level > previousLevel)
+                    {
+                        state.SetFeedback($"Level {state.Player.Level}!",
+                            Microsoft.Xna.Framework.Color.LimeGreen, state.Player);
+                    }
                 }
                 consumed = true;
             }
@@ -63,11 +63,16 @@ public sealed class TurnManager
         for (int i = 0; i < state.MutableMonsters.Count; i++)
         {
             MonsterActor monster = state.MutableMonsters[i];
-            if (!monster.IsAlive || !state.Player.IsAlive) break;
+            if (!state.Player.IsAlive) break;
+            if (!monster.IsAlive) continue;
             int distance = Distance(monster.Position, state.Player.Position);
             bool seesPlayer = distance <= monster.Definition.SightRadius &&
                               state.Dungeon.HasLineOfSight(monster.Position, state.Player.Position);
-            if (seesPlayer) monster.AlertTurns = 5;
+            if (seesPlayer)
+            {
+                monster.AlertTurns = 5;
+                monster.LastKnownPlayerPosition = state.Player.Position;
+            }
             if (monster.Definition.Behavior == MonsterBehavior.Slow && state.TurnNumber % 2 == 0)
             {
                 continue;
@@ -92,9 +97,9 @@ public sealed class TurnManager
                 if (retreat != monster.Position)
                 {
                     monster.Position = retreat;
+                    monster.AlertTurns = Math.Max(monster.AlertTurns - 1, 0);
+                    continue;
                 }
-                monster.AlertTurns = Math.Max(monster.AlertTurns - 1, 0);
-                continue;
             }
             if (distance == 1)
             {
@@ -110,8 +115,9 @@ public sealed class TurnManager
             }
             bool alwaysChase = monster.Definition.Type == MonsterType.Rat;
             if (monster.AlertTurns <= 0 && !alwaysChase) continue;
+            Point targetPosition = monster.LastKnownPlayerPosition ?? state.Player.Position;
             IReadOnlyList<Point> path = pathfinder.FindPath(state.Dungeon, monster.Position,
-                state.Player.Position, point => state.IsOccupied(point, monster) || reserved.Contains(point));
+                targetPosition, point => state.IsOccupied(point, monster) || reserved.Contains(point));
             if (path.Count == 0) { monster.AlertTurns = Math.Max(monster.AlertTurns - 1, 0); continue; }
             Point next = path[0];
             if (next == state.Player.Position || reserved.Contains(next) || state.IsOccupied(next, monster))

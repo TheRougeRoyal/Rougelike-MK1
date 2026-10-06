@@ -103,7 +103,7 @@ public sealed class GameRenderer
             new Color((byte)(12 + feedbackTint.R / 8), (byte)(12 + feedbackTint.G / 8), (byte)(18 + feedbackTint.B / 8)));
         DrawRectangle(new Rectangle(8, hudTop + 8, 120, 8), Color.DarkRed);
         DrawRectangle(new Rectangle(8, hudTop + 8,
-            Math.Max(0, 120 * player.Health / Math.Max(1, player.MaxHealth)), 8), Color.Red);
+            Math.Max(0, 120 * player.Hp / Math.Max(1, player.MaxHp)), 8), Color.Red);
         DrawRectangle(new Rectangle(140, hudTop + 8, 120, 8), Color.DarkBlue);
         DrawRectangle(new Rectangle(140, hudTop + 8,
             Math.Max(0, 120 * experience / Math.Max(1, player.ExperienceToNextLevel)), 8), Color.CornflowerBlue);

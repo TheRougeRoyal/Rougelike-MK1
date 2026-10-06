@@ -3,10 +3,10 @@ using Microsoft.Xna.Framework;
 namespace Roguelike;
 
 /// <summary>Lifecycle states for a run.</summary>
-public enum GameStatus { Playing, Dead, Won }
+public enum GameStatus { Playing, Dead }
 
 /// <summary>Actions accepted by the turn manager.</summary>
-public enum TurnAction { Wait, Heal, MoveUp, MoveDown, MoveLeft, MoveRight, Restart }
+public enum TurnAction { Wait, MoveUp, MoveDown, MoveLeft, MoveRight, Restart }
 
 /// <summary>Deterministic headless game state.</summary>
 public sealed class GameState
@@ -120,7 +120,8 @@ public sealed class GameState
         {
             Point point = new(x, y);
             if (Dungeon.IsWalkable(point) && point != Dungeon.PlayerStart &&
-                point != Dungeon.StairsPosition && Distance(point, Dungeon.PlayerStart) >= 8)
+                point != Dungeon.StairsPosition && !Dungeon.StartRoom.Contains(point) &&
+                Distance(point, Dungeon.PlayerStart) >= 8)
                 candidates.Add(point);
         }
         MonsterDefinition[] available = new MonsterDefinition[4];
@@ -165,6 +166,16 @@ public sealed class GameState
     {
         for (int i = monsters.Count - 1; i >= 0; i--)
             if (!monsters[i].IsAlive) monsters.RemoveAt(i);
+    }
+
+    internal void AddMonsterForTesting(MonsterActor monster) => monsters.Add(monster);
+
+    internal void ConfigureLevelForTesting(Dungeon dungeon, Point playerPosition)
+    {
+        Dungeon = dungeon;
+        Player.Position = playerPosition;
+        monsters.Clear();
+        Dungeon.UpdateFieldOfView(Player.Position);
     }
     internal ulong ComputeStateHash()
     {
