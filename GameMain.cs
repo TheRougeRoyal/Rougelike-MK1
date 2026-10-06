@@ -15,7 +15,7 @@ public sealed class GameMain : Game
     private const int HudHeight = 40;
 
     private readonly GraphicsDeviceManager graphics;
-    private readonly Random random;
+    private readonly Random gameplayRandom;
     private readonly int seed;
     private KeyboardState previousKeyboardState;
     private SpriteBatch? spriteBatch;
@@ -31,7 +31,7 @@ public sealed class GameMain : Game
     public GameMain(int seed)
     {
         this.seed = seed;
-        random = new Random(seed);
+        gameplayRandom = new Random(CreateGameplaySeed(seed));
         graphics = new GraphicsDeviceManager(this)
         {
             PreferredBackBufferWidth = MapWidth * TileSize,
@@ -44,7 +44,7 @@ public sealed class GameMain : Game
     /// <inheritdoc />
     protected override void Initialize()
     {
-        dungeon = new Dungeon(MapWidth, MapHeight, random);
+        dungeon = CreateLevel();
         player = new PlayerActor(dungeon.PlayerStart);
         dungeon.UpdateFieldOfView(player.Position);
         Window.Title = $"Roguelike - Depth {depth} - Seed {seed}";
@@ -110,10 +110,33 @@ public sealed class GameMain : Game
         if (player.Position == dungeon.StairsPosition)
         {
             depth++;
-            dungeon = new Dungeon(MapWidth, MapHeight, random);
+            dungeon = CreateLevel();
             player.Position = dungeon.PlayerStart;
             Window.Title = $"Roguelike - Depth {depth} - Seed {seed}";
             dungeon.UpdateFieldOfView(player.Position);
+        }
+    }
+
+    private Dungeon CreateLevel()
+    {
+        Dungeon level = new(MapWidth, MapHeight, new Random(CreateLevelSeed(seed, depth)));
+        Console.WriteLine($"Generated depth {depth} layout: {level.LayoutFingerprint:X16}");
+        return level;
+    }
+
+    private static int CreateLevelSeed(int runSeed, int levelDepth)
+    {
+        unchecked
+        {
+            return runSeed * 397 ^ levelDepth * 7919;
+        }
+    }
+
+    private static int CreateGameplaySeed(int runSeed)
+    {
+        unchecked
+        {
+            return runSeed * 1009 + 17;
         }
     }
 

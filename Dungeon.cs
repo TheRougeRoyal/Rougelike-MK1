@@ -74,6 +74,11 @@ public sealed class Dungeon
     public Point StairsPosition { get; private set; }
 
     /// <summary>
+    /// Gets a deterministic fingerprint of the generated tile layout.
+    /// </summary>
+    public ulong LayoutFingerprint { get; private set; }
+
+    /// <summary>
     /// Returns whether a tile has been explored.
     /// </summary>
     /// <param name="position">The tile position.</param>
@@ -137,7 +142,6 @@ public sealed class Dungeon
     {
         for (int attempt = 0; attempt < MaximumGenerationAttempts; attempt++)
         {
-            Array.Clear(tiles);
             FillWithWalls();
             rooms.Clear();
 
@@ -177,6 +181,7 @@ public sealed class Dungeon
             {
                 Array.Clear(visible);
                 Array.Clear(explored);
+                LayoutFingerprint = ComputeLayoutFingerprint();
                 return;
             }
         }
@@ -317,6 +322,24 @@ public sealed class Dungeon
         }
 
         return false;
+    }
+
+    private ulong ComputeLayoutFingerprint()
+    {
+        const ulong offset = 14695981039346656037UL;
+        const ulong prime = 1099511628211UL;
+        ulong fingerprint = offset;
+
+        for (int y = 0; y < Height; y++)
+        {
+            for (int x = 0; x < Width; x++)
+            {
+                fingerprint ^= (byte)tiles[x, y];
+                fingerprint *= prime;
+            }
+        }
+
+        return fingerprint;
     }
 
     private IEnumerable<Point> Neighbors(Point position)
