@@ -63,6 +63,24 @@ public sealed class Dungeon
         Generate(random);
     }
 
+    /// <summary>Creates a dungeon from a hand-built tile matrix.</summary>
+    /// <param name="map">Tiles indexed by x then y.</param>
+    /// <param name="playerStart">Player start position.</param>
+    /// <param name="stairsPosition">Stairs position.</param>
+    public Dungeon(TileType[,] map, Point playerStart, Point stairsPosition)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        Width = map.GetLength(0);
+        Height = map.GetLength(1);
+        if (Width == 0 || Height == 0) throw new ArgumentException("Map must not be empty.", nameof(map));
+        tiles = (TileType[,])map.Clone();
+        visible = new bool[Width, Height];
+        explored = new bool[Width, Height];
+        PlayerStart = playerStart;
+        StairsPosition = stairsPosition;
+        LayoutFingerprint = ComputeLayoutFingerprint();
+    }
+
     /// <summary>
     /// Gets the generated player start position.
     /// </summary>
@@ -103,6 +121,28 @@ public sealed class Dungeon
     /// <param name="position">The tile position.</param>
     public bool IsWalkable(Point position) =>
         InBounds(position) && tiles[position.X, position.Y] != TileType.Wall;
+
+    /// <summary>Returns whether a straight line between two tiles is unobstructed.</summary>
+    public bool HasLineOfSight(Point origin, Point target)
+    {
+        if (!InBounds(origin) || !InBounds(target)) return false;
+        int x = origin.X;
+        int y = origin.Y;
+        int deltaX = Math.Abs(target.X - origin.X);
+        int deltaY = Math.Abs(target.Y - origin.Y);
+        int stepX = x < target.X ? 1 : -1;
+        int stepY = y < target.Y ? 1 : -1;
+        int error = deltaX - deltaY;
+        while (true)
+        {
+            if (new Point(x, y) != origin && tiles[x, y] == TileType.Wall)
+                return new Point(x, y) == target;
+            if (x == target.X && y == target.Y) return true;
+            int doubledError = error * 2;
+            if (doubledError > -deltaY) { error -= deltaY; x += stepX; }
+            if (doubledError < deltaX) { error += deltaX; y += stepY; }
+        }
+    }
 
     /// <summary>
     /// Recomputes radius-limited line-of-sight around a player.
@@ -256,43 +296,6 @@ public sealed class Dungeon
         if (InBounds(position))
         {
             tiles[position.X, position.Y] = TileType.Floor;
-        }
-    }
-
-    private bool HasLineOfSight(Point origin, Point target)
-    {
-        int x = origin.X;
-        int y = origin.Y;
-        int deltaX = Math.Abs(target.X - origin.X);
-        int deltaY = Math.Abs(target.Y - origin.Y);
-        int stepX = x < target.X ? 1 : -1;
-        int stepY = y < target.Y ? 1 : -1;
-        int error = deltaX - deltaY;
-
-        while (true)
-        {
-            if (new Point(x, y) != origin && tiles[x, y] == TileType.Wall)
-            {
-                return new Point(x, y) == target;
-            }
-
-            if (x == target.X && y == target.Y)
-            {
-                return true;
-            }
-
-            int doubledError = error * 2;
-            if (doubledError > -deltaY)
-            {
-                error -= deltaY;
-                x += stepX;
-            }
-
-            if (doubledError < deltaX)
-            {
-                error += deltaX;
-                y += stepY;
-            }
         }
     }
 

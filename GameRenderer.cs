@@ -4,7 +4,7 @@ using Microsoft.Xna.Framework.Graphics;
 namespace Roguelike;
 
 /// <summary>
-/// Draws dungeon tiles, the player, and the text-free HUD.
+/// Draws dungeon tiles, actors, feedback bars, and the HUD.
 /// </summary>
 public sealed class GameRenderer
 {
@@ -37,6 +37,23 @@ public sealed class GameRenderer
     /// <param name="depth">The current dungeon depth.</param>
     public void Draw(Dungeon dungeon, PlayerActor player, int depth)
     {
+        Draw(dungeon, player, Array.Empty<MonsterActor>(), depth, 1, 1, string.Empty, Color.White, null);
+    }
+
+    /// <summary>Draws a complete game state.</summary>
+    public void Draw(
+        Dungeon dungeon, PlayerActor player, IReadOnlyList<MonsterActor> monsters,
+        int depth, int level, int experience, string message)
+    {
+        Draw(dungeon, player, monsters, depth, level, experience, message, Color.White, null);
+    }
+
+    /// <summary>Draws a complete state with feedback tint.</summary>
+    public void Draw(
+        Dungeon dungeon, PlayerActor player, IReadOnlyList<MonsterActor> monsters,
+        int depth, int level, int experience, string message, Color feedbackTint,
+        Actor? feedbackActor = null)
+    {
         spriteBatch.Begin(samplerState: SamplerState.PointClamp);
 
         for (int y = 0; y < dungeon.Height; y++)
@@ -62,15 +79,36 @@ public sealed class GameRenderer
                 player.Position.Y * tileSize + 3,
                 tileSize - 6,
                 tileSize - 6);
-            DrawRectangle(playerRect, Color.Gold);
+            DrawRectangle(playerRect, feedbackActor == player ? Color.White : Color.Gold);
+        }
+
+        foreach (MonsterActor monster in monsters)
+        {
+            if (!monster.IsAlive || !dungeon.IsVisible(monster.Position)) continue;
+            Rectangle monsterRect = new(
+                monster.Position.X * tileSize + 4,
+                monster.Position.Y * tileSize + 4,
+                tileSize - 8,
+                tileSize - 8);
+            DrawRectangle(monsterRect, feedbackActor == monster ? Color.White : monster.Definition.Color);
+            if (monster.Hp < monster.MaxHp)
+            {
+                DrawRectangle(new Rectangle(monsterRect.X, monsterRect.Y - 2,
+                    Math.Max(1, monsterRect.Width * monster.Hp / monster.MaxHp), 2), Color.Red);
+            }
         }
 
         int hudTop = dungeon.Height * tileSize;
-        DrawRectangle(new Rectangle(0, hudTop, dungeon.Width * tileSize, hudHeight), new Color(12, 12, 18));
-        for (int index = 0; index < depth; index++)
-        {
-            DrawRectangle(new Rectangle(8 + index * 14, hudTop + 13, 8, 14), Color.CornflowerBlue);
-        }
+        DrawRectangle(new Rectangle(0, hudTop, dungeon.Width * tileSize, hudHeight),
+            new Color((byte)(12 + feedbackTint.R / 8), (byte)(12 + feedbackTint.G / 8), (byte)(18 + feedbackTint.B / 8)));
+        DrawRectangle(new Rectangle(8, hudTop + 8, 120, 8), Color.DarkRed);
+        DrawRectangle(new Rectangle(8, hudTop + 8,
+            Math.Max(0, 120 * player.Health / Math.Max(1, player.MaxHealth)), 8), Color.Red);
+        DrawRectangle(new Rectangle(140, hudTop + 8, 120, 8), Color.DarkBlue);
+        DrawRectangle(new Rectangle(140, hudTop + 8,
+            Math.Max(0, 120 * experience / Math.Max(1, player.ExperienceToNextLevel)), 8), Color.CornflowerBlue);
+        for (int index = 0; index < Math.Min(level, 30); index++)
+            DrawRectangle(new Rectangle(8 + index * 8, hudTop + 22, 5, 8), Color.Gold);
 
         spriteBatch.End();
     }

@@ -15,14 +15,11 @@ public sealed class GameMain : Game
     private const int HudHeight = 40;
 
     private readonly GraphicsDeviceManager graphics;
-    private readonly Random gameplayRandom;
     private readonly int seed;
     private KeyboardState previousKeyboardState;
     private SpriteBatch? spriteBatch;
     private GameRenderer? renderer;
-    private Dungeon? dungeon;
-    private PlayerActor? player;
-    private int depth = 1;
+    private GameState? state;
 
     /// <summary>
     /// Initializes the game with a deterministic random seed.
@@ -31,7 +28,6 @@ public sealed class GameMain : Game
     public GameMain(int seed)
     {
         this.seed = seed;
-        gameplayRandom = new Random(CreateGameplaySeed(seed));
         graphics = new GraphicsDeviceManager(this)
         {
             PreferredBackBufferWidth = MapWidth * TileSize,
@@ -44,10 +40,8 @@ public sealed class GameMain : Game
     /// <inheritdoc />
     protected override void Initialize()
     {
-        dungeon = CreateLevel();
-        player = new PlayerActor(dungeon.PlayerStart);
-        dungeon.UpdateFieldOfView(player.Position);
-        Window.Title = $"Roguelike - Depth {depth} - Seed {seed}";
+        state = new GameState(seed, MapWidth, MapHeight);
+        Window.Title = $"Roguelike - Depth {state.Depth} - Seed {seed}";
         base.Initialize();
     }
 
@@ -66,15 +60,28 @@ public sealed class GameMain : Game
         {
             Exit();
         }
+        else if (state is not null && WasPressed(currentKeyboardState, Keys.R))
+        {
+            state.Process(TurnAction.Restart);
+        }
         else if (TryGetMovement(currentKeyboardState, out Point direction))
         {
-            PerformMove(direction);
+            state?.Process(direction switch
+            {
+                { X: 0, Y: -1 } => TurnAction.MoveUp,
+                { X: 0, Y: 1 } => TurnAction.MoveDown,
+                { X: -1, Y: 0 } => TurnAction.MoveLeft,
+                _ => TurnAction.MoveRight
+            });
         }
         else if (WasPressed(currentKeyboardState, Keys.Space))
         {
-            PerformTurn();
+            state?.Process(TurnAction.Wait);
         }
 
+        if (state is not null)
+            Window.Title = $"Seed {seed}  Depth {state.Depth}  HP {state.Player.Hp}/{state.Player.MaxHp}  " +
+                $"Level {state.Player.Level} XP {state.Player.Experience}/{state.Player.ExperienceToNextLevel} - {state.Message}";
         previousKeyboardState = currentKeyboardState;
         base.Update(gameTime);
     }
@@ -83,69 +90,14 @@ public sealed class GameMain : Game
     protected override void Draw(GameTime gameTime)
     {
         GraphicsDevice.Clear(Color.Black);
-        if (renderer is not null && dungeon is not null && player is not null)
+        if (renderer is not null && state is not null)
         {
-            renderer.Draw(dungeon, player, depth);
+            renderer.Draw(state.Dungeon, state.Player, state.Monsters, state.Depth,
+                state.Player.Level, state.Player.Experience, state.Message, state.FeedbackTint,
+                state.FeedbackActor);
         }
 
         base.Draw(gameTime);
-    }
-
-    private void PerformMove(Point direction)
-    {
-        if (dungeon is null || player is null)
-        {
-            return;
-        }
-
-        Point destination = player.Position + direction;
-        if (!dungeon.IsWalkable(destination))
-        {
-            return;
-        }
-
-        player.Position = destination;
-        PerformTurn();
-
-        if (player.Position == dungeon.StairsPosition)
-        {
-            depth++;
-            dungeon = CreateLevel();
-            player.Position = dungeon.PlayerStart;
-            Window.Title = $"Roguelike - Depth {depth} - Seed {seed}";
-            dungeon.UpdateFieldOfView(player.Position);
-        }
-    }
-
-    private Dungeon CreateLevel()
-    {
-        Dungeon level = new(MapWidth, MapHeight, new Random(CreateLevelSeed(seed, depth)));
-        Console.WriteLine($"Generated depth {depth} layout: {level.LayoutFingerprint:X16}");
-        return level;
-    }
-
-    private static int CreateLevelSeed(int runSeed, int levelDepth)
-    {
-        unchecked
-        {
-            return runSeed * 397 ^ levelDepth * 7919;
-        }
-    }
-
-    private static int CreateGameplaySeed(int runSeed)
-    {
-        unchecked
-        {
-            return runSeed * 1009 + 17;
-        }
-    }
-
-    private void PerformTurn()
-    {
-        if (dungeon is not null && player is not null)
-        {
-            dungeon.UpdateFieldOfView(player.Position);
-        }
     }
 
     private bool WasPressed(KeyboardState current, Keys key) =>

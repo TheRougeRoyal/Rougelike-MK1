@@ -15,6 +15,7 @@ public static class Program
     {
         int seed = ParseSeed(args);
         Console.WriteLine($"Using dungeon seed: {seed}");
+        Console.WriteLine($"Using gameplay seed: {GameState.CreateGameplaySeed(seed)}");
 
         using GameMain game = new(seed);
         game.Run();
