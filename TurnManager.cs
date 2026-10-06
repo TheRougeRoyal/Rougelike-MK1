@@ -7,10 +7,6 @@ public sealed class TurnManager
 {
     private readonly Pathfinder pathfinder = new();
 
-    /// <summary>Processes an action, returning whether it consumed a turn.</summary>
-    public bool ProcessTurn(GameState state, TurnAction action)
-        => ProcessTurn(state, GameAction.FromTurnAction(action));
-
     /// <summary>Processes a movement, wait, or inventory action.</summary>
     public bool ProcessTurn(GameState state, GameAction action)
     {

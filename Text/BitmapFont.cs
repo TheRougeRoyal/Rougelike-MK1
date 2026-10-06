@@ -9,9 +9,15 @@ public sealed class BitmapFont : ITextRenderer
     private const int GlyphWidth = 5;
     private const int GlyphHeight = 7;
     private const int Advance = 6;
+    private const int LineHeightPixels = 8;
     private readonly SpriteBatch spriteBatch;
     private readonly Texture2D pixel;
     private readonly byte[][] glyphs = new byte[95][];
+    /// <summary>Gets the supported printable ASCII range.</summary>
+    public static IReadOnlySet<char> SupportedCharacters { get; } =
+        new HashSet<char>(Enumerable.Range(32, 95).Select(value => (char)value));
+    /// <summary>Gets the horizontal advance at scale one.</summary>
+    public static int GlyphAdvance => Advance;
 
     /// <summary>Creates a bitmap font.</summary>
     public BitmapFont(SpriteBatch spriteBatch, Texture2D pixel)
@@ -21,10 +27,15 @@ public sealed class BitmapFont : ITextRenderer
         for (int i = 0; i < glyphs.Length; i++) glyphs[i] = BuildGlyph((char)(i + 32));
     }
     /// <inheritdoc />
-    public int LineHeight => 8;
+    public int LineHeight => LineHeightPixels;
     /// <inheritdoc />
-    public Point MeasureString(string text, int scale = 1) =>
-        new(text.Length * Advance * scale, LineHeight * scale);
+    public Point MeasureString(string text, int scale = 1) => Measure(text, scale);
+    /// <summary>Measures bitmap text without requiring a graphics device.</summary>
+    public static Point Measure(string text, int scale = 1) =>
+        new(text.Length * Advance * scale, LineHeightPixels * scale);
+    /// <summary>Maps unsupported characters to the question-mark fallback.</summary>
+    public static char NormalizeCharacter(char character) =>
+        character is >= ' ' and <= '~' ? character : '?';
     /// <inheritdoc />
     public void DrawString(string text, Point position, Color color, int scale = 1, bool shadow = false)
     {
@@ -33,7 +44,7 @@ public sealed class BitmapFont : ITextRenderer
         for (int i = 0; i < text.Length; i++)
         {
             char character = text[i];
-            if (character < 32 || character > 126) character = '?';
+            character = NormalizeCharacter(character);
             byte[] rows = glyphs[character - 32];
             if (shadow) DrawGlyph(rows, new Point(x + scale, position.Y + scale), Color.Black, scale);
             DrawGlyph(rows, new Point(x, position.Y), color, scale);

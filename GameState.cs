@@ -5,9 +5,6 @@ namespace Roguelike;
 /// <summary>Lifecycle states for a run.</summary>
 public enum GameStatus { Playing, Dead }
 
-/// <summary>Actions accepted by the turn manager.</summary>
-public enum TurnAction { Wait, MoveUp, MoveDown, MoveLeft, MoveRight, Restart }
-
 /// <summary>Explicit kinds of player actions.</summary>
 public enum ActionKind { Wait, Move, UseItem, EquipItem, UnequipSlot, DropItem, Restart }
 
@@ -28,17 +25,6 @@ public readonly record struct GameAction(ActionKind Kind, Point Direction, int S
     public static GameAction DropItem(int slot) => new(ActionKind.DropItem, Point.Zero, slot);
     /// <summary>Creates a restart action.</summary>
     public static GameAction Restart => new(ActionKind.Restart, Point.Zero, -1);
-    /// <summary>Creates the explicit action equivalent of a legacy turn action.</summary>
-    public static GameAction FromTurnAction(TurnAction action) => action switch
-    {
-        TurnAction.Wait => Wait,
-        TurnAction.MoveUp => Move(new Point(0, -1)),
-        TurnAction.MoveDown => Move(new Point(0, 1)),
-        TurnAction.MoveLeft => Move(new Point(-1, 0)),
-        TurnAction.MoveRight => Move(new Point(1, 0)),
-        TurnAction.Restart => Restart,
-        _ => throw new ArgumentOutOfRangeException(nameof(action))
-    };
 }
 
 /// <summary>Deterministic headless game state.</summary>
@@ -103,8 +89,6 @@ public sealed class GameState
     /// <summary>Gets a deterministic hash of the complete gameplay state.</summary>
     public ulong StateHash => ComputeStateHash();
 
-    /// <summary>Processes one action.</summary>
-    public bool Process(TurnAction action) => turnManager.ProcessTurn(this, GameAction.FromTurnAction(action));
     /// <summary>Processes an inventory action.</summary>
     public bool Process(GameAction action) => turnManager.ProcessTurn(this, action);
     /// <summary>Restarts the run, including gameplay RNG.</summary>

@@ -5,9 +5,6 @@ public readonly record struct InventoryAddResult(int AddedCount, int LeftoverCou
 {
     /// <summary>Gets whether the complete requested stack was inserted.</summary>
     public bool IsComplete => LeftoverCount == 0;
-    /// <summary>Allows legacy callers and Phase 3 tests to test whether insertion completed.</summary>
-    /// <remarks>New code should use <see cref="IsComplete"/> explicitly.</remarks>
-    public static implicit operator bool(InventoryAddResult result) => result.IsComplete;
 }
 
 /// <summary>Ten-slot player inventory with stack-aware insertion.</summary>

@@ -24,11 +24,11 @@ public static class TextLayout
         }
         return lines;
     }
-    /// <summary>Truncates text and appends a Unicode ellipsis when needed.</summary>
+    /// <summary>Truncates text and appends an ASCII ellipsis when needed.</summary>
     public static string Truncate(string text, int width)
     {
         if (width < 1) throw new ArgumentOutOfRangeException(nameof(width));
-        return text.Length <= width ? text : width == 1 ? "…" : text[..(width - 1)] + "…";
+        return text.Length <= width ? text : width <= 3 ? new string('.', width) : text[..(width - 3)] + "...";
     }
     /// <summary>Gets the left coordinate for an aligned string.</summary>
     public static int AlignX(int containerLeft, int containerWidth, int textWidth, TextAlignment alignment) =>

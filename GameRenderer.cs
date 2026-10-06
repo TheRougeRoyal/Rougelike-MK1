@@ -29,14 +29,28 @@ public sealed class GameRenderer
         int depth, int level, int experience, string message, Color feedbackTint,
         Actor? feedbackActor = null, IReadOnlyList<FloorItem>? floorItems = null,
         bool inventoryOpen = false, int inventoryCursor = -1, MessageLog? messageLog = null,
-        int turnNumber = 0, ScreenKind screen = ScreenKind.Playing, RunStats? stats = null)
+        int turnNumber = 0, ScreenKind screen = ScreenKind.Playing, RunStats? stats = null,
+        bool restartConfirmation = false)
     {
         spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         DrawMap(dungeon, player, monsters, floorItems, feedbackActor);
         DrawHud(dungeon, player, depth, level, experience, messageLog, turnNumber, stats);
         if (inventoryOpen) DrawInventory(player, inventoryCursor);
+        if (restartConfirmation) DrawRestartConfirmation(dungeon.Width * tileSize, dungeon.Height * tileSize);
         if (screen != ScreenKind.Playing) DrawScreen(screen, depth, stats);
         spriteBatch.End();
+    }
+
+    private void DrawRestartConfirmation(int width, int height)
+    {
+        int boxWidth = 260;
+        int boxHeight = 54;
+        int x = (width - boxWidth) / 2;
+        int y = (height - boxHeight) / 2;
+        DrawRectangle(new Rectangle(x, y, boxWidth, boxHeight), new Color(20, 20, 30, 250));
+        DrawRectangle(new Rectangle(x, y, boxWidth, 2), Color.Gold);
+        DrawRectangle(new Rectangle(x, y + boxHeight - 2, boxWidth, 2), Color.Gold);
+        text.DrawString("Restart run? Y/N", new Point(x + 58, y + 20), Color.White, 1, true);
     }
 
     private void DrawMap(Dungeon dungeon, PlayerActor player, IReadOnlyList<MonsterActor> monsters,

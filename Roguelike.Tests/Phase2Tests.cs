@@ -87,13 +87,13 @@ public sealed class Phase2Tests
         Assert.Equal(first.LayoutFingerprint, second.LayoutFingerprint);
 
         ulong initialHash = first.StateHash;
-        first.Process(TurnAction.Wait);
+        first.Process(GameAction.Wait);
         first.Restart();
 
         Assert.Equal(initialHash, first.StateHash);
         Assert.Equal(
-            new HeadlessSimulation().RunHash(42, new[] { TurnAction.Wait }),
-            new HeadlessSimulation().RunHash(42, new[] { TurnAction.Wait }));
+            new HeadlessSimulation().RunHash(42, new[] { GameAction.Wait }),
+            new HeadlessSimulation().RunHash(42, new[] { GameAction.Wait }));
     }
 
     [Fact]
@@ -148,7 +148,7 @@ public sealed class Phase2Tests
         state.AddMonsterForTesting(archer);
         int playerHp = state.Player.Hp;
 
-        Assert.True(state.Process(TurnAction.Wait));
+        Assert.True(state.Process(GameAction.Wait));
 
         Assert.True(state.Player.Hp < playerHp);
         Assert.Contains("shoots", state.Message);
@@ -207,14 +207,14 @@ public sealed class Phase2Tests
     {
         for (int seed = 0; seed < 200; seed++)
         {
-            List<TurnAction> actions = CreateFuzzActions(seed);
+            List<GameAction> actions = CreateFuzzActions(seed);
             ulong firstHash = RunAndValidate(seed, actions);
             ulong secondHash = RunAndValidate(seed, actions);
             Assert.Equal(firstHash, secondHash);
         }
     }
 
-    private static ulong RunAndValidate(int seed, IReadOnlyList<TurnAction> actions)
+    private static ulong RunAndValidate(int seed, IReadOnlyList<GameAction> actions)
     {
         GameState state = new(seed);
         for (int i = 0; i < actions.Count; i++)
@@ -226,22 +226,29 @@ public sealed class Phase2Tests
         return state.StateHash;
     }
 
-    private static List<TurnAction> CreateFuzzActions(int seed)
+    private static List<GameAction> CreateFuzzActions(int seed)
     {
         Random random = new(seed * 17 + 3);
-        List<TurnAction> actions = new(500);
+        List<GameAction> actions = new(500);
         GameState state = new(seed);
 
         for (int turn = 0; turn < 500; turn++)
         {
-            TurnAction action;
+            GameAction action;
             if (state.Status == GameStatus.Dead)
             {
-                action = TurnAction.Restart;
+                action = GameAction.Restart;
             }
             else
             {
-                action = (TurnAction)random.Next(0, 5);
+                action = random.Next(0, 5) switch
+                {
+                    0 => GameAction.Wait,
+                    1 => GameAction.Move(new Point(0, -1)),
+                    2 => GameAction.Move(new Point(0, 1)),
+                    3 => GameAction.Move(new Point(-1, 0)),
+                    _ => GameAction.Move(new Point(1, 0))
+                };
             }
 
             actions.Add(action);
@@ -303,15 +310,15 @@ public sealed class Phase2Tests
         throw new InvalidOperationException("No walkable neighbor found.");
     }
 
-    private static TurnAction ActionFor(Point origin, Point destination)
+    private static GameAction ActionFor(Point origin, Point destination)
     {
         Point delta = destination - origin;
         return delta switch
         {
-            { X: 1, Y: 0 } => TurnAction.MoveRight,
-            { X: -1, Y: 0 } => TurnAction.MoveLeft,
-            { X: 0, Y: 1 } => TurnAction.MoveDown,
-            _ => TurnAction.MoveUp
+            { X: 1, Y: 0 } => GameAction.Move(new Point(1, 0)),
+            { X: -1, Y: 0 } => GameAction.Move(new Point(-1, 0)),
+            { X: 0, Y: 1 } => GameAction.Move(new Point(0, 1)),
+            _ => GameAction.Move(new Point(0, -1))
         };
     }
 }

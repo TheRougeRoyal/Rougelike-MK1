@@ -24,15 +24,15 @@ public sealed class Phase3Tests
         Inventory inventory = new(2);
         ItemDefinition potion = ItemCatalog.Get(ItemId.HealingPotion);
         ItemInstance first = new(potion, 5);
-        Assert.True(inventory.TryAdd(first));
+        Assert.True(inventory.TryAdd(first).IsComplete);
         Assert.Equal(5, first.Count);
         ItemInstance second = new(potion, 3);
-        Assert.True(inventory.TryAdd(second));
+        Assert.True(inventory.TryAdd(second).IsComplete);
         Assert.Equal(2, inventory.Items.Count);
         Assert.Equal(5, inventory.Items[0].Count);
         Assert.Equal(3, inventory.Items[1].Count);
         ItemInstance third = new(potion, 5);
-        Assert.False(inventory.TryAdd(third));
+        Assert.False(inventory.TryAdd(third).IsComplete);
         Assert.Equal(2, inventory.Items.Count);
     }
 
@@ -160,13 +160,13 @@ public sealed class Phase3Tests
 
         Assert.True(state.Process(GameAction.UseItem(1)));
         Assert.Equal(20, state.Player.Effects.Single().RemainingTurns);
-        for (int i = 0; i < 5; i++) state.Process(TurnAction.Wait);
+        for (int i = 0; i < 5; i++) state.Process(GameAction.Wait);
         Assert.Equal(15, state.Player.Effects.Single().RemainingTurns);
         Assert.True(state.Process(GameAction.UseItem(1)));
         Assert.Equal(20, state.Player.Effects.Single().RemainingTurns);
-        for (int i = 0; i < 19; i++) state.Process(TurnAction.Wait);
+        for (int i = 0; i < 19; i++) state.Process(GameAction.Wait);
         Assert.Equal(1, state.Player.Effects.Single().RemainingTurns);
-        state.Process(TurnAction.Wait);
+        state.Process(GameAction.Wait);
         Assert.Empty(state.Player.Effects);
     }
 
@@ -241,14 +241,14 @@ public sealed class Phase3Tests
         GameState second = CreateOpenState(101);
         first.MutableMonsters.Clear();
         second.MutableMonsters.Clear();
-        first.Process(TurnAction.Wait);
+        first.Process(GameAction.Wait);
         first.ConsumeGameplayRandomForTesting(17);
-        second.Process(TurnAction.Wait);
-        second.Process(TurnAction.Wait);
+        second.Process(GameAction.Wait);
+        second.Process(GameAction.Wait);
         first.Player.Position = first.Dungeon.StairsPosition;
         second.Player.Position = second.Dungeon.StairsPosition;
-        first.Process(TurnAction.Wait);
-        second.Process(TurnAction.Wait);
+        first.Process(GameAction.Wait);
+        second.Process(GameAction.Wait);
 
         Assert.Equal(2, first.Depth);
         Assert.Equal(FloorSignature(first), FloorSignature(second));

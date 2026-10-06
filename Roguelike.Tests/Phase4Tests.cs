@@ -11,9 +11,22 @@ public sealed class Phase4Tests
         Assert.Equal(new[] { "hello", "world" }, TextLayout.WordWrap("hello world", 5));
         Assert.Equal(new[] { "abcde", "f" }, TextLayout.WordWrap("abcdef", 5));
         Assert.Empty(TextLayout.WordWrap(string.Empty, 10));
-        Assert.Equal("abcd…", TextLayout.Truncate("abcdef", 5));
+        Assert.Equal("ab...", TextLayout.Truncate("abcdef", 5));
+        Assert.All(new[] { 1, 2, 3, 5, 10 }, width =>
+            Assert.All(TextLayout.Truncate("a long string", width),
+                character => Assert.Contains(character, BitmapFont.SupportedCharacters)));
         Assert.Equal(15, TextLayout.AlignX(10, 20, 10, TextAlignment.Center));
         Assert.Equal(20, TextLayout.AlignX(10, 20, 10, TextAlignment.Right));
+    }
+
+    [Fact]
+    public void BitmapFontCoversPrintableAsciiAndMeasuresAtBothScales()
+    {
+        for (char character = ' '; character <= '~'; character++)
+            Assert.Contains(character, BitmapFont.SupportedCharacters);
+        Assert.Equal('?', BitmapFont.NormalizeCharacter('\u2603'));
+        Assert.Equal(new Point(18, 8), BitmapFont.Measure("abc", 1));
+        Assert.Equal(new Point(36, 16), BitmapFont.Measure("abc", 2));
     }
 
     [Fact]
@@ -71,22 +84,113 @@ public sealed class Phase4Tests
         Assert.Equal(UiCommandKind.Move, mapper.Map(held, held, ScreenKind.Playing, UiOverlay.None,
             TimeSpan.FromMilliseconds(1)).Kind);
         Assert.Equal(UiCommandKind.None, mapper.Map(empty, held, ScreenKind.Paused, UiOverlay.None, TimeSpan.FromSeconds(1)).Kind);
+        Assert.Equal(UiCommandKind.MenuDown, mapper.Map(empty, new HashSet<string> { "Down" },
+            ScreenKind.Paused, UiOverlay.None, TimeSpan.Zero).Kind);
+        Assert.Equal(UiCommandKind.Accept, mapper.Map(empty, new HashSet<string> { "Enter" },
+            ScreenKind.Paused, UiOverlay.None, TimeSpan.Zero).Kind);
+        Assert.Equal(UiCommandKind.CloseHelp, mapper.Map(empty, new HashSet<string> { "Escape" },
+            ScreenKind.Help, UiOverlay.None, TimeSpan.Zero).Kind);
+        Assert.Equal(UiCommandKind.Quit, mapper.Map(empty, new HashSet<string> { "Escape" },
+            ScreenKind.Title, UiOverlay.None, TimeSpan.Zero).Kind);
+        Assert.Equal(UiCommandKind.ConfirmRestart, mapper.Map(empty, new HashSet<string> { "Y" },
+            ScreenKind.Playing, UiOverlay.RestartConfirmation, TimeSpan.Zero).Kind);
+        Assert.Equal(UiCommandKind.CancelRestart, mapper.Map(empty, new HashSet<string> { "N" },
+            ScreenKind.Playing, UiOverlay.RestartConfirmation, TimeSpan.Zero).Kind);
+        Assert.Equal(UiCommandKind.MenuDown, mapper.Map(empty, new HashSet<string> { "S" },
+            ScreenKind.Playing, UiOverlay.Inventory, TimeSpan.Zero).Kind);
+        Assert.Equal(UiCommandKind.UnequipArmor, mapper.Map(empty, new HashSet<string> { "D2" },
+            ScreenKind.Playing, UiOverlay.Inventory, TimeSpan.Zero).Kind);
+        Assert.Equal(UiCommandKind.None, mapper.Map(new HashSet<string> { "Down" },
+            new HashSet<string> { "Down" }, ScreenKind.Paused, UiOverlay.None,
+            TimeSpan.FromSeconds(10)).Kind);
+        Assert.Equal(UiCommandKind.None, mapper.Map(empty, new HashSet<string> { "2" },
+            ScreenKind.Playing, UiOverlay.None, TimeSpan.Zero).Kind);
+        Assert.Equal(UiCommandKind.Move, mapper.Map(empty, new HashSet<string> { "NumPad2" },
+            ScreenKind.Playing, UiOverlay.None, TimeSpan.Zero).Kind);
     }
 
     [Fact]
-    public void ScreensEnforceRunTransitions()
+    public void ScreensAcceptValidAndRejectInvalidTransitions()
+    {
+        ScreenStateMachine screens = new();
+        Assert.False(screens.Resume());
+        Assert.True(screens.Start());
+        Assert.False(screens.Start());
+        Assert.True(screens.Pause());
+        Assert.False(screens.Pause());
+        Assert.True(screens.ShowHelp());
+        Assert.True(screens.CloseHelp());
+        Assert.Equal(ScreenKind.Paused, screens.Screen);
+        Assert.True(screens.Resume());
+        Assert.True(screens.RequestRestart());
+        Assert.False(screens.RequestRestart());
+        Assert.True(screens.CancelRestart());
+        Assert.True(screens.RequestRestart());
+        Assert.True(screens.ConfirmRestart());
+        Assert.False(screens.ConfirmRestart());
+        Assert.True(screens.GameOver());
+        Assert.True(screens.RestartRun());
+        Assert.True(screens.GameOver());
+        Assert.True(screens.Title());
+        Assert.True(screens.ShowHelp());
+        Assert.True(screens.CloseHelp());
+        Assert.Equal(ScreenKind.Title, screens.Screen);
+    }
+
+    [Fact]
+    public void RunStatsTrackCombatPickupDepthAndDeath()
+    {
+        GameState state = CreateOpenState();
+        MonsterDefinition definition = MonsterCatalog.Get(MonsterType.Rat) with { MaxHp = 1 };
+        state.AddMonsterForTesting(new MonsterActor(definition, state.Player.Position + new Point(1, 0)));
+        Assert.True(state.Process(GameAction.Move(new Point(1, 0))));
+        Assert.Equal(1, state.RunStats.MonstersSlain);
+        Assert.True(state.RunStats.DamageDealt >= 1);
+
+        state.Player.Position = new Point(1, 1);
+        state.AddFloorItem(state.Player.Position + new Point(1, 0),
+            new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
+        Assert.True(state.Process(GameAction.Move(new Point(1, 0))));
+        Assert.Equal(1, state.RunStats.ItemsPickedUp);
+
+        state.Player.Position = state.Dungeon.StairsPosition;
+        Assert.True(state.Process(GameAction.Wait));
+        Assert.Equal(2, state.RunStats.MaxDepth);
+
+        GameState death = CreateOpenState();
+        MonsterDefinition killer = MonsterCatalog.Get(MonsterType.Brute) with { Attack = 100, MaxHp = 100 };
+        death.AddMonsterForTesting(new MonsterActor(killer, death.Player.Position + new Point(1, 0)));
+        Assert.True(death.Process(GameAction.Wait));
+        Assert.Equal("Brute", death.RunStats.CauseOfDeath);
+        Assert.True(death.RunStats.DamageTaken > 0);
+    }
+
+    [Fact]
+    public void StateHashIgnoresLogStatsAndUiState()
+    {
+        GameState first = new(44);
+        GameState second = new(44);
+        ulong expected = first.StateHash;
+        first.SetFeedback("visible", Color.Red);
+        first.RunStats.DamageDealt = 99;
+        first.MessageLog.Clear();
+        ScreenStateMachine ui = new();
+        ui.Start();
+        ui.RequestRestart();
+        Assert.Equal(expected, first.StateHash);
+        Assert.Equal(expected, second.StateHash);
+    }
+
+    [Fact]
+    public void RestartOverlayOnlyOpensOnUnoverlaidPlay()
     {
         ScreenStateMachine screens = new();
         screens.Start();
-        screens.Pause();
-        Assert.Equal(ScreenKind.Paused, screens.Screen);
-        screens.Resume();
-        screens.GameOver();
-        screens.RestartRun();
-        Assert.Equal(ScreenKind.Playing, screens.Screen);
-        screens.GameOver();
-        screens.Title();
-        Assert.Equal(ScreenKind.Title, screens.Screen);
+        screens.ToggleInventory();
+        Assert.False(screens.RequestRestart());
+        screens.CloseOverlay();
+        Assert.True(screens.RequestRestart());
+        Assert.True(screens.CancelRestart());
     }
 
     private static Dungeon CreateOpenDungeon()
@@ -96,5 +200,12 @@ public sealed class Phase4Tests
         for (int x = 0; x < 20; x++)
             map[x, y] = TileType.Floor;
         return new Dungeon(map, new Point(1, 1), new Point(18, 10));
+    }
+
+    private static GameState CreateOpenState()
+    {
+        GameState state = new(1, 20, 12);
+        state.ConfigureLevelForTesting(CreateOpenDungeon(), new Point(1, 1));
+        return state;
     }
 }
