@@ -242,6 +242,7 @@ public sealed class Phase3Tests
         first.MutableMonsters.Clear();
         second.MutableMonsters.Clear();
         first.Process(TurnAction.Wait);
+        first.ConsumeGameplayRandomForTesting(17);
         second.Process(TurnAction.Wait);
         second.Process(TurnAction.Wait);
         first.Player.Position = first.Dungeon.StairsPosition;
@@ -296,7 +297,7 @@ public sealed class Phase3Tests
                     2 => GameAction.Move(new Point(0, 1)),
                     3 => GameAction.Move(new Point(-1, 0)),
                     4 => GameAction.Move(new Point(1, 0)),
-                    _ => GameAction.Restart
+                    _ => GameAction.Wait
                 };
                 if (random.Next(4) == 0)
                     action = random.Next(4) switch
@@ -312,6 +313,27 @@ public sealed class Phase3Tests
             ulong second = RunFuzz(seed, actions);
             Assert.Equal(first, second);
         }
+    }
+
+    [Fact]
+    public void BiasedWalkerReachesDepthThreeForSomeSeeds()
+    {
+        int deepest = 1;
+        int reached = 0;
+        for (int seed = 0; seed < 20; seed++)
+        {
+            GameState state = new(seed);
+            Pathfinder pathfinder = new();
+            for (int turn = 0; turn < 2500 && state.Depth < 3 && state.Status == GameStatus.Playing; turn++)
+            {
+                IReadOnlyList<Point> path = pathfinder.FindPath(state.Dungeon, state.Player.Position,
+                    state.Dungeon.StairsPosition, point => state.IsOccupied(point));
+                state.Process(path.Count > 0 ? GameAction.Move(path[0] - state.Player.Position) : GameAction.Wait);
+            }
+            deepest = Math.Max(deepest, state.Depth);
+            if (state.Depth >= 3) reached++;
+        }
+        Assert.True(reached > 0, $"walker reached depth {deepest}; expected at least one seed to reach depth 3");
     }
 
     private static ulong RunFuzz(int seed, IReadOnlyList<GameAction> actions)

@@ -41,6 +41,7 @@ public sealed class TurnManager
         if (!consumed) return false;
 
         state.TurnNumber++;
+        state.RunStats.TurnsSurvived = state.TurnNumber;
         MonsterTurns(state);
         if (state.Status == GameStatus.Playing && state.Player.Position == state.Dungeon.StairsPosition)
             state.AdvanceDepth();
@@ -60,11 +61,13 @@ public sealed class TurnManager
         if (target is not null)
         {
             CombatResult result = CombatResolver.Resolve(state.Player, target, state.GameplayRandom);
+            state.RunStats.DamageDealt += result.Damage;
             state.SetFeedback($"You hit {target.Name} for {result.Damage}.",
                 result.Killed ? Microsoft.Xna.Framework.Color.Gold : Microsoft.Xna.Framework.Color.White,
                 target);
             if (result.Killed)
             {
+                state.RunStats.MonstersSlain++;
                 int previousLevel = state.Player.Level;
                 state.Player.AddExperience(target.Definition.XpValue);
                 state.SetFeedback($"{target.Name} dies. +{target.Definition.XpValue} XP.",
@@ -124,7 +127,8 @@ public sealed class TurnManager
             for (int x = 0; x < state.Dungeon.Width; x++)
             {
                 Point point = new(x, y);
-                if (state.Dungeon.IsWalkable(point) && Distance(point, state.Player.Position) >= 6 &&
+                if (state.Dungeon.IsWalkable(point) && point != state.Dungeon.StairsPosition &&
+                    Distance(point, state.Player.Position) >= 6 &&
                     !state.IsOccupiedByPlayerOrMonster(point))
                     candidates.Add(point);
             }
@@ -259,6 +263,7 @@ public sealed class TurnManager
             state.RemoveFloorItem(floorItem);
         else
             offered.Count = result.LeftoverCount;
+        state.RunStats.ItemsPickedUp += result.AddedCount;
         state.SetFeedback($"Picked up {offered.Definition.Name}.", Microsoft.Xna.Framework.Color.LimeGreen);
     }
 
@@ -297,11 +302,13 @@ public sealed class TurnManager
                 seesPlayer && distance >= 2 && distance <= 5)
             {
                 CombatResult ranged = CombatResolver.Resolve(monster, state.Player, state.GameplayRandom);
+                state.RunStats.DamageTaken += ranged.Damage;
                 state.SetFeedback($"{monster.Name} shoots you for {ranged.Damage}.",
                     Microsoft.Xna.Framework.Color.OrangeRed, state.Player);
                 if (!state.Player.IsAlive)
                 {
                     state.Status = GameStatus.Dead;
+                    state.RunStats.CauseOfDeath = monster.Name;
                     state.SetFeedback("You died. Press R to restart.", Microsoft.Xna.Framework.Color.Red);
                 }
                 continue;
@@ -319,11 +326,13 @@ public sealed class TurnManager
             if (distance == 1)
             {
                 CombatResult melee = CombatResolver.Resolve(monster, state.Player, state.GameplayRandom);
+                state.RunStats.DamageTaken += melee.Damage;
                 state.SetFeedback($"{monster.Name} hits you for {melee.Damage}.",
                     Microsoft.Xna.Framework.Color.OrangeRed, state.Player);
                 if (!state.Player.IsAlive)
                 {
                     state.Status = GameStatus.Dead;
+                    state.RunStats.CauseOfDeath = monster.Name;
                     state.SetFeedback("You died. Press R to restart.", Microsoft.Xna.Framework.Color.Red);
                 }
                 continue;

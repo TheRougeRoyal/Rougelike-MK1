@@ -92,6 +92,10 @@ public sealed class GameState
     public Actor? FeedbackActor { get; internal set; }
     /// <summary>Gets completed turns.</summary>
     public int TurnNumber { get; internal set; }
+    /// <summary>Gets the bounded message history for the current run.</summary>
+    public MessageLog MessageLog { get; } = new();
+    /// <summary>Gets run statistics. These are presentation metadata and are excluded from StateHash.</summary>
+    public RunStats RunStats { get; } = new();
     /// <summary>Gets run seed.</summary>
     public int Seed => runSeed;
     /// <summary>Gets current layout fingerprint.</summary>
@@ -115,6 +119,8 @@ public sealed class GameState
         TurnNumber = 0;
         Status = GameStatus.Playing;
         gameplayRandom = new Random(CreateGameplaySeed(runSeed));
+        RunStats.Reset();
+        MessageLog.Clear();
         monsters.Clear();
         floorItems.Clear();
         SetFeedback("Explore the dungeon.", Microsoft.Xna.Framework.Color.White);
@@ -148,6 +154,7 @@ public sealed class GameState
     internal void AdvanceDepth()
     {
         Depth++;
+        RunStats.MaxDepth = Math.Max(RunStats.MaxDepth, Depth);
         CreateLevel(false);
         SetFeedback($"You descend to depth {Depth}.", Microsoft.Xna.Framework.Color.Gold);
     }
@@ -229,6 +236,7 @@ public sealed class GameState
         FeedbackTint = tint;
         FeedbackActor = actor;
         FeedbackTurns = 3;
+        MessageLog.Add(message, tint, TurnNumber);
     }
     internal void CleanupDead()
     {
@@ -260,6 +268,10 @@ public sealed class GameState
     internal void SetGameplayRandomForTesting(Random random)
     {
         gameplayRandom = random ?? throw new ArgumentNullException(nameof(random));
+    }
+    internal void ConsumeGameplayRandomForTesting(int draws)
+    {
+        for (int i = 0; i < Math.Max(0, draws); i++) gameplayRandom.Next();
     }
     internal ulong ComputeStateHash()
     {
