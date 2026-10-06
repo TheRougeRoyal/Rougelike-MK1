@@ -9,55 +9,39 @@ public sealed class TurnManager
 
     /// <summary>Processes an action, returning whether it consumed a turn.</summary>
     public bool ProcessTurn(GameState state, TurnAction action)
-        => ProcessTurn(state, new GameAction(action));
+        => ProcessTurn(state, GameAction.FromTurnAction(action));
 
     /// <summary>Processes a movement, wait, or inventory action.</summary>
     public bool ProcessTurn(GameState state, GameAction action)
     {
-        if (action.Movement == TurnAction.Restart) { state.Restart(); return false; }
+        if (action.Kind == ActionKind.Restart) { state.Restart(); return false; }
         if (state.Status != GameStatus.Playing) return false;
 
-        bool inventoryAction = action.Slot >= 0;
-        bool consumed = inventoryAction
-            ? ProcessInventoryAction(state, action)
-            : action.Movement == TurnAction.Wait;
-        Point direction = Direction(action.Movement);
-        if (direction != Point.Zero)
+        bool consumed;
+        switch (action.Kind)
         {
-            Point destination = state.Player.Position + direction;
-            MonsterActor? target = state.MonsterAt(destination);
-            if (target is not null)
-            {
-                CombatResult result = CombatResolver.Resolve(state.Player, target, state.GameplayRandom);
-                state.SetFeedback($"You hit {target.Name} for {result.Damage}.",
-                    result.Killed ? Microsoft.Xna.Framework.Color.Gold : Microsoft.Xna.Framework.Color.White,
-                    target);
-                if (result.Killed)
-                {
-                    int previousLevel = state.Player.Level;
-                    state.Player.AddExperience(target.Definition.XpValue);
-                    state.SetFeedback($"{target.Name} dies. +{target.Definition.XpValue} XP.",
-                        Microsoft.Xna.Framework.Color.Gold, target);
-                    if (state.Player.Level > previousLevel)
-                    {
-                        state.SetFeedback($"Level {state.Player.Level}!",
-                            Microsoft.Xna.Framework.Color.LimeGreen, state.Player);
-                    }
-                }
+            case ActionKind.Wait:
+                TickEffects(state);
                 consumed = true;
-            }
-            else if (state.Dungeon.IsWalkable(destination) && !state.IsOccupied(destination))
-            {
-                state.Player.Position = destination;
-                TryPickup(state);
-                consumed = true;
-            }
+                break;
+            case ActionKind.Move:
+                consumed = ProcessMovement(state, action.Direction);
+                if (consumed) TickEffects(state);
+                break;
+            case ActionKind.UseItem:
+            case ActionKind.EquipItem:
+            case ActionKind.UnequipSlot:
+            case ActionKind.DropItem:
+                consumed = ProcessInventoryAction(state, action);
+                break;
+            default:
+                consumed = false;
+                break;
         }
         if (!consumed) return false;
 
         state.TurnNumber++;
         MonsterTurns(state);
-        TickEffects(state);
         if (state.Status == GameStatus.Playing && state.Player.Position == state.Dungeon.StairsPosition)
             state.AdvanceDepth();
         state.Dungeon.UpdateFieldOfView(state.Player.Position);
@@ -68,17 +52,51 @@ public sealed class TurnManager
         return true;
     }
 
-    private static bool ProcessInventoryAction(GameState state, GameAction action)
+    private static bool ProcessMovement(GameState state, Point direction)
     {
-        if (action.Movement == TurnAction.Wait)
-            return UseItem(state, action.Slot);
-        if (action.Movement == TurnAction.MoveUp)
-            return EquipItem(state, action.Slot);
-        if (action.Movement == TurnAction.MoveDown)
-            return UnequipItem(state, action.Slot);
-        if (action.Movement == TurnAction.MoveLeft)
-            return DropItem(state, action.Slot);
+        if (direction == Point.Zero) return false;
+        Point destination = state.Player.Position + direction;
+        MonsterActor? target = state.MonsterAt(destination);
+        if (target is not null)
+        {
+            CombatResult result = CombatResolver.Resolve(state.Player, target, state.GameplayRandom);
+            state.SetFeedback($"You hit {target.Name} for {result.Damage}.",
+                result.Killed ? Microsoft.Xna.Framework.Color.Gold : Microsoft.Xna.Framework.Color.White,
+                target);
+            if (result.Killed)
+            {
+                int previousLevel = state.Player.Level;
+                state.Player.AddExperience(target.Definition.XpValue);
+                state.SetFeedback($"{target.Name} dies. +{target.Definition.XpValue} XP.",
+                    Microsoft.Xna.Framework.Color.Gold, target);
+                if (state.Player.Level > previousLevel)
+                    state.SetFeedback($"Level {state.Player.Level}!",
+                        Microsoft.Xna.Framework.Color.LimeGreen, state.Player);
+            }
+            return true;
+        }
+        if (state.Dungeon.IsWalkable(destination) && !state.IsOccupied(destination))
+        {
+            state.Player.Position = destination;
+            TryPickup(state);
+            return true;
+        }
         return false;
+    }
+
+    private static bool ProcessInventoryAction(GameState state, GameAction action) =>
+        action.Kind switch
+        {
+            ActionKind.UseItem => UseItem(state, action.Slot),
+            ActionKind.EquipItem => EquipItem(state, action.Slot),
+            ActionKind.UnequipSlot => UnequipItem(state, action.Slot),
+            ActionKind.DropItem => DropItem(state, action.Slot),
+            _ => false
+        };
+
+    private static void PrepareConsumedInventoryAction(GameState state)
+    {
+        TickEffects(state);
     }
 
     private static bool UseItem(GameState state, int slot)
@@ -115,19 +133,23 @@ public sealed class TurnManager
                 state.SetFeedback("There is nowhere safe to teleport.", Microsoft.Xna.Framework.Color.Yellow);
                 return false;
             }
+            PrepareConsumedInventoryAction(state);
             state.Player.Position = candidates[state.GameplayRandom.Next(candidates.Count)];
             state.Dungeon.UpdateFieldOfView(state.Player.Position);
         }
         else if (definition.Id == ItemId.ScrollOfMapping)
         {
+            PrepareConsumedInventoryAction(state);
             state.Dungeon.RevealAll();
         }
         else if (definition.HealAmount > 0)
         {
+            PrepareConsumedInventoryAction(state);
             state.Player.Heal(definition.HealAmount);
         }
         else if (definition.BuffDuration > 0)
         {
+            PrepareConsumedInventoryAction(state);
             StatusEffect? effect = state.Player.Effects.FirstOrDefault(item => item.Type == StatusEffectType.Strength);
             if (effect is null) state.Player.Effects.Add(new StatusEffect(StatusEffectType.Strength,
                 definition.AttackBonus, definition.BuffDuration));
@@ -151,17 +173,30 @@ public sealed class TurnManager
             state.SetFeedback("Only weapons and armor can be equipped.", Microsoft.Xna.Framework.Color.Yellow);
             return false;
         }
-        ItemInstance equipped = state.Player.Inventory.RemoveOne(slot)!;
+        ItemInstance? oldEquipped = item.Definition.Type == ItemType.Weapon
+            ? state.Player.EquippedWeapon : state.Player.EquippedArmor;
+        ItemInstance equipped = item.Clone(1);
+        ItemInstance? removed = state.Player.Inventory.RemoveOne(slot);
+        if (removed is null) return false;
+        if (oldEquipped is not null)
+        {
+            InventoryAddResult canReturn = state.Player.Inventory.TryAdd(oldEquipped);
+            if (!canReturn.IsComplete)
+            {
+                state.Player.Inventory.TryAdd(removed);
+                state.SetFeedback("There is no room to swap that equipment.", Microsoft.Xna.Framework.Color.Yellow);
+                return false;
+            }
+        }
         if (item.Definition.Type == ItemType.Weapon)
         {
-            if (state.Player.EquippedWeapon is not null) state.Player.Inventory.TryAdd(state.Player.EquippedWeapon);
             state.Player.EquippedWeapon = equipped;
         }
         else
         {
-            if (state.Player.EquippedArmor is not null) state.Player.Inventory.TryAdd(state.Player.EquippedArmor);
             state.Player.EquippedArmor = equipped;
         }
+        PrepareConsumedInventoryAction(state);
         state.SetFeedback($"Equipped {equipped.Definition.Name}.", Microsoft.Xna.Framework.Color.Gold);
         return true;
     }
@@ -174,11 +209,14 @@ public sealed class TurnManager
             state.SetFeedback("That equipment slot is empty.", Microsoft.Xna.Framework.Color.Yellow);
             return false;
         }
-        if (!state.Player.Inventory.TryAdd(equipped))
+        if (!state.Player.Inventory.CanAdd(equipped))
         {
             state.SetFeedback("Your inventory is full.", Microsoft.Xna.Framework.Color.Yellow);
             return false;
         }
+        PrepareConsumedInventoryAction(state);
+        InventoryAddResult result = state.Player.Inventory.TryAdd(equipped);
+        if (!result.IsComplete) throw new InvalidOperationException("Inventory preflight disagreed with insertion.");
         if (slot == 0) state.Player.EquippedWeapon = null;
         else state.Player.EquippedArmor = null;
         state.SetFeedback($"Unequipped {equipped.Definition.Name}.", Microsoft.Xna.Framework.Color.Gold);
@@ -187,8 +225,7 @@ public sealed class TurnManager
 
     private static bool DropItem(GameState state, int slot)
     {
-        ItemInstance? item = state.Player.Inventory.RemoveStack(slot);
-        if (item is null)
+        if (slot < 0 || slot >= state.Player.Inventory.Items.Count)
         {
             state.SetFeedback("That inventory slot is empty.", Microsoft.Xna.Framework.Color.Yellow);
             return false;
@@ -197,10 +234,11 @@ public sealed class TurnManager
             ? state.Player.Position : state.FindNearestFreeTile(state.Player.Position);
         if (destination is null)
         {
-            state.Player.Inventory.TryAdd(item);
             state.SetFeedback("There is no room to drop that item.", Microsoft.Xna.Framework.Color.Yellow);
             return false;
         }
+        ItemInstance item = state.Player.Inventory.RemoveStack(slot)!;
+        PrepareConsumedInventoryAction(state);
         state.AddFloorItem(destination.Value, item);
         state.SetFeedback($"Dropped {item.Definition.Name}.", Microsoft.Xna.Framework.Color.White);
         return true;
@@ -211,12 +249,16 @@ public sealed class TurnManager
         FloorItem? floorItem = state.FloorItemAt(state.Player.Position);
         if (floorItem is null) return;
         ItemInstance offered = floorItem.Item;
-        if (!state.Player.Inventory.TryAdd(offered))
+        InventoryAddResult result = state.Player.Inventory.TryAdd(offered);
+        if (result.AddedCount == 0)
         {
             state.SetFeedback("Your inventory is full.", Microsoft.Xna.Framework.Color.Yellow);
             return;
         }
-        state.RemoveFloorItem(floorItem);
+        if (result.LeftoverCount == 0)
+            state.RemoveFloorItem(floorItem);
+        else
+            offered.Count = result.LeftoverCount;
         state.SetFeedback($"Picked up {offered.Definition.Name}.", Microsoft.Xna.Framework.Color.LimeGreen);
     }
 
@@ -290,10 +332,12 @@ public sealed class TurnManager
             if (monster.AlertTurns <= 0 && !alwaysChase) continue;
             Point targetPosition = monster.LastKnownPlayerPosition ?? state.Player.Position;
             IReadOnlyList<Point> path = pathfinder.FindPath(state.Dungeon, monster.Position,
-                targetPosition, point => state.IsOccupied(point, monster) || reserved.Contains(point));
+                targetPosition, point => state.IsOccupied(point, monster) ||
+                    reserved.Contains(point) || state.FloorItemAt(point) is not null);
             if (path.Count == 0) { monster.AlertTurns = Math.Max(monster.AlertTurns - 1, 0); continue; }
             Point next = path[0];
-            if (next == state.Player.Position || reserved.Contains(next) || state.IsOccupied(next, monster))
+            if (next == state.Player.Position || reserved.Contains(next) ||
+                state.IsOccupied(next, monster) || state.FloorItemAt(next) is not null)
             {
                 monster.AlertTurns = Math.Max(monster.AlertTurns - 1, 0);
                 continue;
@@ -321,6 +365,7 @@ public sealed class TurnManager
             int distance = Distance(candidate, state.Player.Position);
             if (distance > bestDistance && state.Dungeon.IsWalkable(candidate) &&
                 !state.IsOccupied(candidate, monster) &&
+                state.FloorItemAt(candidate) is null &&
                 state.Dungeon.HasLineOfSight(candidate, state.Player.Position))
             {
                 best = candidate;
@@ -332,12 +377,4 @@ public sealed class TurnManager
     }
 
     private static int Distance(Point a, Point b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
-    private static Point Direction(TurnAction action) => action switch
-    {
-        TurnAction.MoveUp => new Point(0, -1),
-        TurnAction.MoveDown => new Point(0, 1),
-        TurnAction.MoveLeft => new Point(-1, 0),
-        TurnAction.MoveRight => new Point(1, 0),
-        _ => Point.Zero
-    };
 }

@@ -25,6 +25,7 @@ public sealed class Phase3Tests
         ItemDefinition potion = ItemCatalog.Get(ItemId.HealingPotion);
         ItemInstance first = new(potion, 5);
         Assert.True(inventory.TryAdd(first));
+        Assert.Equal(5, first.Count);
         ItemInstance second = new(potion, 3);
         Assert.True(inventory.TryAdd(second));
         Assert.Equal(2, inventory.Items.Count);
@@ -42,11 +43,27 @@ public sealed class Phase3Tests
         state.MutableMonsters.Clear();
         state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
         state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.ShortSword)));
-        Assert.True(state.Process(GameAction.EquipItem(2)));
-        Assert.Equal(7, state.Player.TotalAttack);
         Assert.True(state.Process(GameAction.EquipItem(1)));
         Assert.Equal(6, state.Player.TotalAttack);
-        Assert.Contains(state.Player.Inventory.Items, item => item.Definition.Id == ItemId.ShortSword);
+        Assert.True(state.Process(GameAction.EquipItem(1)));
+        Assert.Equal(7, state.Player.TotalAttack);
+        Assert.Contains(state.Player.Inventory.Items, item => item.Definition.Id == ItemId.Dagger);
+    }
+
+    [Fact]
+    public void UnequipRemovesAttackAndDefenseBonuses()
+    {
+        GameState state = CreateOpenState();
+        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
+        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.LeatherArmor)));
+        Assert.True(state.Process(GameAction.EquipItem(1)));
+        Assert.True(state.Process(GameAction.EquipItem(1)));
+        Assert.Equal(6, state.Player.TotalAttack);
+        Assert.Equal(2, state.Player.TotalDefense);
+        Assert.True(state.Process(GameAction.UnequipSlot(0)));
+        Assert.True(state.Process(GameAction.UnequipSlot(1)));
+        Assert.Equal(5, state.Player.TotalAttack);
+        Assert.Equal(1, state.Player.TotalDefense);
     }
 
     [Fact]
@@ -58,6 +75,182 @@ public sealed class Phase3Tests
         Assert.False(state.Process(GameAction.UseItem(0)));
         Assert.Equal(before, state.TurnNumber);
         Assert.Equal(count, state.Player.Inventory.Items[0].Count);
+    }
+
+    [Fact]
+    public void InventoryActionsNeverMoveOrAttackAndInvalidActionsDoNotChangeHash()
+    {
+        GameState state = CreateOpenState();
+        Point origin = state.Player.Position;
+        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.PotionOfStrength)));
+        int useTurn = state.TurnNumber;
+        Assert.True(state.Process(GameAction.UseItem(1)));
+        Assert.Equal(origin, state.Player.Position);
+        Assert.Equal(useTurn + 1, state.TurnNumber);
+
+        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
+        int turn = state.TurnNumber;
+        Assert.True(state.Process(GameAction.EquipItem(1)));
+        Assert.Equal(origin, state.Player.Position);
+        Assert.Equal(turn + 1, state.TurnNumber);
+
+        ulong beforeInvalidUse = state.StateHash;
+        Assert.False(state.Process(GameAction.UseItem(1)));
+        Assert.Equal(beforeInvalidUse, state.StateHash);
+        Assert.Equal(origin, state.Player.Position);
+
+        int armorSlot = state.Player.Inventory.Items.Count;
+        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.LeatherArmor)));
+        Assert.True(state.Process(GameAction.EquipItem(armorSlot)));
+        Assert.Equal(origin, state.Player.Position);
+        int beforeUnequip = state.TurnNumber;
+        Assert.True(state.Process(GameAction.UnequipSlot(0)));
+        Assert.Equal(origin, state.Player.Position);
+        Assert.Equal(beforeUnequip + 1, state.TurnNumber);
+
+        ulong beforeInvalidUnequip = state.StateHash;
+        Assert.False(state.Process(GameAction.UnequipSlot(0)));
+        Assert.Equal(beforeInvalidUnequip, state.StateHash);
+    }
+
+    [Fact]
+    public void InvalidUseEquipUnequipAndDropDoNotConsumeTurns()
+    {
+        GameState state = CreateOpenState();
+        foreach (GameAction action in new[]
+        {
+            GameAction.UseItem(99), GameAction.EquipItem(99),
+            GameAction.UnequipSlot(0), GameAction.DropItem(99)
+        })
+        {
+            ulong before = state.StateHash;
+            int turn = state.TurnNumber;
+            Point position = state.Player.Position;
+            Assert.False(state.Process(action));
+            Assert.Equal(before, state.StateHash);
+            Assert.Equal(turn, state.TurnNumber);
+            Assert.Equal(position, state.Player.Position);
+            Assert.NotEmpty(state.Message);
+        }
+    }
+
+    [Fact]
+    public void EquipDoesNotAttackMonsterAbovePlayer()
+    {
+        GameState state = CreateOpenState();
+        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
+        MonsterActor monster = new(MonsterCatalog.Get(MonsterType.Rat),
+            state.Player.Position + new Point(0, -1));
+        state.AddMonsterForTesting(monster);
+        int monsterHp = monster.Hp;
+        Point origin = state.Player.Position;
+
+        Assert.True(state.Process(GameAction.EquipItem(1)));
+
+        Assert.Equal(origin, state.Player.Position);
+        Assert.Equal(monsterHp, monster.Hp);
+    }
+
+    [Fact]
+    public void StrengthBuffLastsExactlyTwentyFollowingTurnsAndRefreshes()
+    {
+        GameState state = CreateOpenState();
+        ItemDefinition strength = ItemCatalog.Get(ItemId.PotionOfStrength);
+        state.Player.Inventory.TryAdd(new ItemInstance(strength, 2));
+
+        Assert.True(state.Process(GameAction.UseItem(1)));
+        Assert.Equal(20, state.Player.Effects.Single().RemainingTurns);
+        for (int i = 0; i < 5; i++) state.Process(TurnAction.Wait);
+        Assert.Equal(15, state.Player.Effects.Single().RemainingTurns);
+        Assert.True(state.Process(GameAction.UseItem(1)));
+        Assert.Equal(20, state.Player.Effects.Single().RemainingTurns);
+        for (int i = 0; i < 19; i++) state.Process(TurnAction.Wait);
+        Assert.Equal(1, state.Player.Effects.Single().RemainingTurns);
+        state.Process(TurnAction.Wait);
+        Assert.Empty(state.Player.Effects);
+    }
+
+    [Fact]
+    public void TeleportIsValidAcrossFiftySeeds()
+    {
+        for (int seed = 0; seed < 50; seed++)
+        {
+            GameState state = CreateOpenState(seed);
+            state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.ScrollOfTeleportation)));
+            Point origin = state.Player.Position;
+            Assert.True(state.Process(GameAction.UseItem(1)));
+            Assert.True(state.Dungeon.IsWalkable(state.Player.Position));
+            Assert.False(state.IsOccupied(state.Player.Position));
+            Assert.True(Math.Abs(origin.X - state.Player.Position.X) +
+                Math.Abs(origin.Y - state.Player.Position.Y) >= 6);
+        }
+    }
+
+    [Fact]
+    public void DropFindsNearestFreeTileWhenPlayerTileIsOccupied()
+    {
+        GameState state = CreateOpenState();
+        Point origin = state.Player.Position;
+        state.AddFloorItem(origin, new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
+        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.ShortSword)));
+        int turn = state.TurnNumber;
+
+        Assert.True(state.Process(GameAction.DropItem(1)));
+
+        Assert.Equal(origin, state.Player.Position);
+        Assert.Equal(turn + 1, state.TurnNumber);
+        Assert.Contains(state.FloorItems, item => item.Position != origin &&
+            item.Item.Definition.Id == ItemId.ShortSword);
+    }
+
+    [Fact]
+    public void FullInventoryPickupLeavesFloorItemInPlace()
+    {
+        GameState state = CreateOpenState();
+        for (int i = state.Player.Inventory.Items.Count; i < state.Player.Inventory.Capacity; i++)
+            state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
+        Point destination = state.Player.Position + new Point(1, 0);
+        FloorItem floorItem = new(destination, new ItemInstance(ItemCatalog.Get(ItemId.ShortSword)));
+        state.AddFloorItem(destination, floorItem.Item);
+
+        Assert.True(state.Process(GameAction.Move(new Point(1, 0))));
+
+        Assert.Contains(state.FloorItems, item => item.Position == destination &&
+            item.Item.Definition.Id == floorItem.Item.Definition.Id);
+    }
+
+    [Fact]
+    public void MonsterDropCanBeForcedThroughGameplayRandomSeam()
+    {
+        GameState state = CreateOpenState();
+        MonsterActor monster = new(MonsterCatalog.Get(MonsterType.Rat),
+            state.Player.Position + new Point(2, 0));
+        monster.Hp = 0;
+        state.AddMonsterForTesting(monster);
+        state.SetGameplayRandomForTesting(new ZeroRandom());
+
+        state.DropLootForTesting(monster);
+
+        Assert.Contains(state.FloorItems, item => item.Item.Definition.MinDepth <= state.Depth);
+    }
+
+    [Fact]
+    public void LootAtDepthTwoIgnoresDifferentDepthOneGameplayHistory()
+    {
+        GameState first = CreateOpenState(101);
+        GameState second = CreateOpenState(101);
+        first.MutableMonsters.Clear();
+        second.MutableMonsters.Clear();
+        first.Process(TurnAction.Wait);
+        second.Process(TurnAction.Wait);
+        second.Process(TurnAction.Wait);
+        first.Player.Position = first.Dungeon.StairsPosition;
+        second.Player.Position = second.Dungeon.StairsPosition;
+        first.Process(TurnAction.Wait);
+        second.Process(TurnAction.Wait);
+
+        Assert.Equal(2, first.Depth);
+        Assert.Equal(FloorSignature(first), FloorSignature(second));
     }
 
     [Fact]
@@ -96,7 +289,15 @@ public sealed class Phase3Tests
             List<GameAction> actions = new();
             for (int turn = 0; turn < 500; turn++)
             {
-                GameAction action = new((TurnAction)random.Next(0, 5));
+                GameAction action = random.Next(0, 6) switch
+                {
+                    0 => GameAction.Wait,
+                    1 => GameAction.Move(new Point(0, -1)),
+                    2 => GameAction.Move(new Point(0, 1)),
+                    3 => GameAction.Move(new Point(-1, 0)),
+                    4 => GameAction.Move(new Point(1, 0)),
+                    _ => GameAction.Restart
+                };
                 if (random.Next(4) == 0)
                     action = random.Next(4) switch
                     {
@@ -116,20 +317,59 @@ public sealed class Phase3Tests
     private static ulong RunFuzz(int seed, IReadOnlyList<GameAction> actions)
     {
         GameState state = new(seed);
+        ValidateInitialLoot(state);
         foreach (GameAction action in actions)
         {
             state.Process(action);
+            if (state.Status == GameStatus.Dead)
+                state.Process(GameAction.Restart);
             Assert.True(state.Player.Inventory.Items.Count <= state.Player.Inventory.Capacity);
             Assert.InRange(state.Player.Hp, 0, state.Player.MaxHp);
+            Assert.All(state.Player.Inventory.Items, item =>
+                Assert.InRange(item.Count, 1, item.Definition.MaxStack));
             Assert.DoesNotContain(state.Player.Inventory.Items, item =>
                 item == state.Player.EquippedWeapon || item == state.Player.EquippedArmor);
             Assert.Equal(state.FloorItems.Count, state.FloorItems.Select(item => item.Position).Distinct().Count());
-            Assert.All(state.FloorItems, item => Assert.True(state.Dungeon.IsWalkable(item.Position)));
+            Assert.All(state.FloorItems, item =>
+            {
+                Assert.True(state.Dungeon.IsWalkable(item.Position));
+                Assert.DoesNotContain(state.Monsters, monster => monster.Position == item.Position);
+            });
         }
         return state.StateHash;
+    }
+
+    private static void ValidateInitialLoot(GameState state)
+    {
+        Assert.Equal(state.FloorItems.Count,
+            state.FloorItems.Select(item => item.Position).Distinct().Count());
+        Assert.All(state.FloorItems, item =>
+        {
+            Assert.True(state.Dungeon.IsWalkable(item.Position));
+            Assert.NotEqual(state.Dungeon.StairsPosition, item.Position);
+            Assert.NotEqual(state.Dungeon.PlayerStart, item.Position);
+            Assert.DoesNotContain(state.Monsters, monster => monster.Position == item.Position);
+        });
     }
 
     private static string FloorSignature(GameState state) =>
         string.Join("|", state.FloorItems.OrderBy(item => item.Position.Y).ThenBy(item => item.Position.X)
             .Select(item => $"{item.Position.X},{item.Position.Y}:{item.Item.Definition.Id}:{item.Item.Count}"));
+
+    private static GameState CreateOpenState(int seed = 1)
+    {
+        GameState state = new(seed, 20, 12);
+        TileType[,] map = new TileType[20, 12];
+        for (int y = 0; y < 12; y++)
+        for (int x = 0; x < 20; x++)
+            map[x, y] = TileType.Floor;
+        state.ConfigureLevelForTesting(new Dungeon(map, new Point(1, 1), new Point(18, 10)),
+            new Point(1, 1));
+        return state;
+    }
+
+    private sealed class ZeroRandom : Random
+    {
+        public override int Next(int maxValue) => 0;
+    }
 }

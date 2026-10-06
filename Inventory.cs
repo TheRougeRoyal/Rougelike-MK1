@@ -1,5 +1,14 @@
 namespace Roguelike;
 
+/// <summary>The result of inserting an item stack.</summary>
+public readonly record struct InventoryAddResult(int AddedCount, int LeftoverCount)
+{
+    /// <summary>Gets whether the complete requested stack was inserted.</summary>
+    public bool IsComplete => LeftoverCount == 0;
+    /// <summary>Allows existing callers to test whether insertion completed.</summary>
+    public static implicit operator bool(InventoryAddResult result) => result.IsComplete;
+}
+
 /// <summary>Ten-slot player inventory with stack-aware insertion.</summary>
 public sealed class Inventory
 {
@@ -12,8 +21,19 @@ public sealed class Inventory
     /// <summary>Gets whether all slots are occupied.</summary>
     public bool IsFull => Items.Count >= Capacity;
 
+    /// <summary>Gets whether the complete stack can be inserted without changing the inventory.</summary>
+    public bool CanAdd(ItemInstance incoming)
+    {
+        int remaining = incoming.Count;
+        foreach (ItemInstance stack in Items.Where(item => item.Definition.Id == incoming.Definition.Id))
+            remaining -= Math.Min(stack.Definition.MaxStack - stack.Count, remaining);
+        int freeSlots = Capacity - Items.Count;
+        remaining -= freeSlots * incoming.Definition.MaxStack;
+        return remaining <= 0;
+    }
+
     /// <summary>Attempts to add a stack, filling compatible stacks first.</summary>
-    public bool TryAdd(ItemInstance incoming)
+    public InventoryAddResult TryAdd(ItemInstance incoming)
     {
         int remaining = incoming.Count;
         foreach (ItemInstance stack in Items.Where(item => item.Definition.Id == incoming.Definition.Id))
@@ -22,7 +42,7 @@ public sealed class Inventory
             int moved = Math.Min(room, remaining);
             stack.Count += moved;
             remaining -= moved;
-            if (remaining == 0) return true;
+            if (remaining == 0) return new InventoryAddResult(incoming.Count, 0);
         }
         while (remaining > 0 && Items.Count < Capacity)
         {
@@ -30,8 +50,7 @@ public sealed class Inventory
             Items.Add(incoming.Clone(moved));
             remaining -= moved;
         }
-        incoming.Count = remaining;
-        return remaining == 0;
+        return new InventoryAddResult(incoming.Count - remaining, remaining);
     }
 
     /// <summary>Removes one item from a slot.</summary>

@@ -58,7 +58,13 @@ public sealed class GameMain : Game
     protected override void Update(GameTime gameTime)
     {
         KeyboardState currentKeyboardState = Keyboard.GetState();
-        if (WasPressed(currentKeyboardState, Keys.I))
+        if (state is not null && WasPressed(currentKeyboardState, Keys.R))
+        {
+            state.Process(GameAction.Restart);
+            inventoryOpen = false;
+            inventoryCursor = 0;
+        }
+        else if (state is not null && state.Status != GameStatus.Dead && WasPressed(currentKeyboardState, Keys.I))
         {
             inventoryOpen = !inventoryOpen;
         }
@@ -78,17 +84,15 @@ public sealed class GameMain : Game
             }
             else if (WasPressed(currentKeyboardState, Keys.D) && inventoryCursor < state.Player.Inventory.Items.Count)
                 state.Process(GameAction.DropItem(inventoryCursor));
-            else if (WasPressed(currentKeyboardState, Keys.U))
-                state.Process(GameAction.UnequipSlot(inventoryCursor == 0 ? 0 : 1));
+            else if (WasPressed(currentKeyboardState, Keys.D1))
+                state.Process(GameAction.UnequipSlot(0));
+            else if (WasPressed(currentKeyboardState, Keys.D2))
+                state.Process(GameAction.UnequipSlot(1));
             inventoryCursor = Math.Clamp(inventoryCursor, 0, Math.Max(0, state.Player.Inventory.Items.Count - 1));
         }
         else if (WasPressed(currentKeyboardState, Keys.Escape))
         {
             Exit();
-        }
-        else if (state is not null && WasPressed(currentKeyboardState, Keys.R))
-        {
-            state.Process(TurnAction.Restart);
         }
         else if (TryGetMovement(currentKeyboardState, out Point direction))
         {
