@@ -1,5 +1,7 @@
 using Microsoft.Xna.Framework;
 using Xunit;
+using Roguelike.Content;
+
 
 namespace Roguelike.Tests;
 
@@ -8,11 +10,13 @@ public sealed class Phase2Tests
     [Fact]
     public void PlayerHasRequiredStatsAndLevelRules()
     {
-        PlayerActor player = new(Point.Zero);
-        Assert.Equal(30, player.Hp);
-        Assert.Equal(30, player.MaxHp);
-        Assert.Equal(1, player.Defense);
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        PlayerActor player = new(Point.Zero, content);
+        Assert.Equal(content.Balance.StartingHp, player.Hp);
+        Assert.Equal(content.Balance.StartingHp, player.MaxHp);
+        Assert.Equal(content.Balance.StartingDefense, player.Defense);
         Assert.Equal(20, player.ExperienceToNextLevel);
+
 
         player.Hp = 10;
         Assert.Equal(10, player.Heal());
@@ -30,15 +34,17 @@ public sealed class Phase2Tests
     [Fact]
     public void CombatResolverUsesSuppliedRandomAndMinimumDamage()
     {
-        PlayerActor player = new(Point.Zero);
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        PlayerActor player = new(Point.Zero, content);
         MonsterDefinition toughDefinition = new(
-            MonsterType.Brute, "Tough", 'T', 20, 1, 10, 5,
+            "tough", "Tough", 'T', 20, 1, 10, 5,
             MonsterBehavior.Chase, Color.Red, 1, 1);
         MonsterActor firstMonster = new(toughDefinition, new Point(1, 0));
         MonsterActor secondMonster = new(toughDefinition, new Point(1, 0));
 
-        CombatResult first = CombatResolver.Resolve(player, firstMonster, new Random(123));
-        CombatResult second = CombatResolver.Resolve(player, secondMonster, new Random(123));
+
+        CombatResult first = CombatResolver.Resolve(player, firstMonster, new Pcg32(123));
+        CombatResult second = CombatResolver.Resolve(player, secondMonster, new Pcg32(123));
 
         Assert.Same(player, first.Attacker);
         Assert.Same(firstMonster, first.Defender);
@@ -49,14 +55,16 @@ public sealed class Phase2Tests
     [Fact]
     public void CatalogContainsRequiredMonsterKindsAndFields()
     {
-        Assert.Equal(
-            new[] { MonsterType.Rat, MonsterType.Goblin, MonsterType.Archer, MonsterType.Brute },
-            MonsterCatalog.All.Select(definition => definition.Type));
-        Assert.All(MonsterCatalog.All, definition =>
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        Assert.Contains("rat", content.Monsters.Select(d => d.Id));
+        Assert.Contains("goblin", content.Monsters.Select(d => d.Id));
+        Assert.Contains("archer", content.Monsters.Select(d => d.Id));
+        Assert.Contains("brute", content.Monsters.Select(d => d.Id));
+        Assert.All(content.Monsters, definition =>
         {
             Assert.True(definition.SightRadius > 0);
             Assert.True(definition.MinDepth > 0);
-            Assert.True(definition.XpValue > 0);
+            Assert.True(definition.Xp > 0);
         });
     }
 
@@ -82,9 +90,10 @@ public sealed class Phase2Tests
     [Fact]
     public void SameSeedDepthAndRestartAreDeterministic()
     {
-        GameState first = new(42);
-        GameState second = new(42);
+        GameState first = new(42, 60, 34, 1, ContentDatabase.LoadDefault());
+        GameState second = new(42, 60, 34, 1, ContentDatabase.LoadDefault());
         Assert.Equal(first.LayoutFingerprint, second.LayoutFingerprint);
+
 
         ulong initialHash = first.StateHash;
         first.Process(GameAction.Wait);
@@ -116,7 +125,7 @@ public sealed class Phase2Tests
     [Fact]
     public void KillingFirstAdjacentMonsterDoesNotSkipSecondMonster()
     {
-        GameState state = new(123);
+        GameState state = new(123, 60, 34, 1, ContentDatabase.LoadDefault());
         state.MutableMonsters.Clear();
         Point playerPosition = state.Player.Position;
         Point firstPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, null);
@@ -125,9 +134,10 @@ public sealed class Phase2Tests
         MonsterDefinition secondDefinition = CreateDefinition("Second", 1);
         MonsterActor first = new(firstDefinition, firstPosition);
         MonsterActor second = new(secondDefinition, secondPosition);
-        state.AddMonsterForTesting(first);
-        state.AddMonsterForTesting(second);
+        state.AddMonsterForScenario(first);
+        state.AddMonsterForScenario(second);
         int playerHp = state.Player.Hp;
+
 
         Assert.True(state.Process(ActionFor(playerPosition, firstPosition)));
 
@@ -139,14 +149,17 @@ public sealed class Phase2Tests
     [Fact]
     public void ArcherAtDistanceThreeWithLineOfSightDamagesPlayer()
     {
-        GameState state = new(9, 12, 10);
+        GameState state = new(9, 12, 10, 1, ContentDatabase.LoadDefault());
         TileType[,] map = CreateFloorMap(12, 10);
         Dungeon dungeon = new(map, new Point(1, 1), new Point(10, 8));
-        state.ConfigureLevelForTesting(dungeon, new Point(1, 1));
-        MonsterActor archer = new(
-            MonsterCatalog.Get(MonsterType.Archer), new Point(4, 1));
-        state.AddMonsterForTesting(archer);
+        state.ConfigureLevel(dungeon, new Point(1, 1));
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        MonsterContent archerContent = content.GetMonster("archer");
+        MonsterDefinition archerDef = new(archerContent.Id, archerContent.Name, archerContent.Glyph, archerContent.MaxHp, archerContent.Attack, archerContent.Defense, archerContent.SightRadius, archerContent.Behavior, archerContent.Color, archerContent.MinDepth, archerContent.Xp);
+        MonsterActor archer = new(archerDef, new Point(4, 1));
+        state.AddMonsterForScenario(archer);
         int playerHp = state.Player.Hp;
+
 
         Assert.True(state.Process(GameAction.Wait));
 
@@ -157,12 +170,13 @@ public sealed class Phase2Tests
     [Fact]
     public void LevelUpReportsTheNewLevel()
     {
-        GameState state = new(77);
+        GameState state = new(77, 60, 34, 1, ContentDatabase.LoadDefault());
         state.MutableMonsters.Clear();
         Point playerPosition = state.Player.Position;
         Point monsterPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, null);
         MonsterDefinition definition = CreateDefinition("Veteran", 1) with { XpValue = 20 };
-        state.AddMonsterForTesting(new MonsterActor(definition, monsterPosition));
+        state.AddMonsterForScenario(new MonsterActor(definition, monsterPosition));
+
 
         Assert.True(state.Process(ActionFor(playerPosition, monsterPosition)));
         Assert.Equal(2, state.Player.Level);
@@ -176,7 +190,7 @@ public sealed class Phase2Tests
         {
             for (int depth = 1; depth <= 10; depth++)
             {
-                GameState state = new(seed, 60, 34, depth);
+                GameState state = new(seed, 60, 34, depth, ContentDatabase.LoadDefault());
                 HashSet<Point> positions = new();
                 foreach (MonsterActor monster in state.Monsters)
                 {
@@ -195,7 +209,7 @@ public sealed class Phase2Tests
     {
         for (int seed = 0; seed < 200; seed++)
         {
-            Dungeon dungeon = new(60, 34, new Random(GameState.CreateLevelSeed(seed, 1)));
+            Dungeon dungeon = new(60, 34, RandomStreams.Create(GameState.CreateLevelSeed(seed, 1), 1, 0x4C455645UL));
             IReadOnlyList<Point> path = new Pathfinder().FindPath(
                 dungeon, dungeon.PlayerStart, dungeon.StairsPosition);
             Assert.NotEmpty(path);
@@ -288,7 +302,7 @@ public sealed class Phase2Tests
     }
 
     private static MonsterDefinition CreateDefinition(string name, int maxHp) =>
-        new(MonsterType.Goblin, name, 'm', maxHp, 1, 0, 8,
+        new("goblin", name, 'm', maxHp, 1, 0, 8,
             MonsterBehavior.Chase, Color.Red, 1, 1);
 
     private static Point FindWalkableNeighbor(Dungeon dungeon, Point origin, Point? excluded)

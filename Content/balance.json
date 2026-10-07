@@ -4,5 +4,18 @@
   "startingAttack": 5,
   "startingDefense": 1,
   "spawnBase": 2,
-  "spawnPerDepth": 2
+  "spawnPerDepth": 2,
+  "lootMin": 2,
+  "lootMax": 4,
+  "dropChancePercent": 20,
+  "xpPerLevel": 20,
+  "levelMaxHpBonus": 5,
+  "levelAttackBonus": 1,
+  "levelDefenseBonus": 1,
+  "levelDefenseEvery": 3,
+  "levelHealAmount": 10,
+  "depthHpScale": 2,
+  "depthAttackScale": 0,
+  "depthDefenseScale": 0,
+  "startingLoadout": ["healing_potion"]
 }

@@ -1,4 +1,6 @@
 using Microsoft.Xna.Framework;
+using Roguelike.Content;
+
 
 namespace Roguelike;
 
@@ -7,7 +9,7 @@ public static class LootSpawner
 {
     /// <summary>Creates the depth loot list and places it on valid tiles.</summary>
     public static List<FloorItem> Spawn(Dungeon dungeon, int depth, int seed,
-        Point playerStart, IReadOnlyList<MonsterActor> monsters)
+        Point playerStart, IReadOnlyList<MonsterActor> monsters, ContentDatabase content)
     {
         IRandom random = RandomStreams.Create(seed, depth, 0x4C4F4F54UL);
         List<Point> candidates = new();
@@ -20,15 +22,30 @@ public static class LootSpawner
                 monsters.All(monster => monster.Position != point))
                 candidates.Add(point);
         }
-        int count = random.Next(2, 5);
+        int count = random.Next(content.Balance.LootMin, content.Balance.LootMax + 1);
         List<FloorItem> result = new();
         for (int i = 0; i < count && candidates.Count > 0; i++)
         {
             int pointIndex = random.Next(candidates.Count);
             Point point = candidates[pointIndex];
             candidates.RemoveAt(pointIndex);
-            result.Add(new FloorItem(point, new ItemInstance(ItemCatalog.Choose(depth, random))));
+            result.Add(new FloorItem(point, new ItemInstance(Choose(depth, random, content))));
         }
         return result;
+    }
+
+    /// <summary>Returns a weighted, depth-appropriate item from the content database.</summary>
+    public static ItemDefinition Choose(int depth, IRandom random, ContentDatabase content)
+    {
+        ItemContent[] available = content.Items.Where(item => item.MinDepth <= depth).ToArray();
+        int total = available.Sum(item => item.Weight);
+        int roll = random.Next(total);
+        foreach (ItemContent item in available)
+        {
+            if (roll < item.Weight) return content.CreateDefinition(item.Id);
+            roll -= item.Weight;
+        }
+        ItemContent last = available[^1];
+        return content.CreateDefinition(last.Id);
     }
 }

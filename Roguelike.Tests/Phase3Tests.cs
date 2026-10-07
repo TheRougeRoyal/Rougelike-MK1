@@ -1,5 +1,7 @@
 using Microsoft.Xna.Framework;
 using Xunit;
+using Roguelike.Content;
+
 
 namespace Roguelike.Tests;
 
@@ -8,8 +10,9 @@ public sealed class Phase3Tests
     [Fact]
     public void ItemCatalogDefinitionsAreValid()
     {
-        Assert.Equal(11, ItemCatalog.All.Count);
-        Assert.All(ItemCatalog.All, item =>
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        Assert.NotEmpty(content.Items);
+        Assert.All(content.Items, item =>
         {
             Assert.True(item.Weight > 0);
             Assert.True(item.MinDepth >= 1);
@@ -21,8 +24,10 @@ public sealed class Phase3Tests
     [Fact]
     public void InventoryStacksAndSpillsIntoSlots()
     {
+        ContentDatabase content = ContentDatabase.LoadDefault();
         Inventory inventory = new(2);
-        ItemDefinition potion = ItemCatalog.Get(ItemId.HealingPotion);
+        ItemContent potionContent = content.GetItem(ItemId.HealingPotion);
+        ItemDefinition potion = new(potionContent.Id, potionContent.Name, potionContent.Description, potionContent.Type, potionContent.Color, potionContent.MinDepth, potionContent.Weight, potionContent.MaxStack, potionContent.AttackBonus, potionContent.DefenseBonus, potionContent.Glyph);
         ItemInstance first = new(potion, 5);
         Assert.True(inventory.TryAdd(first).IsComplete);
         Assert.Equal(5, first.Count);
@@ -39,10 +44,15 @@ public sealed class Phase3Tests
     [Fact]
     public void EquipSwapAndCombatUseBonuses()
     {
-        GameState state = new(5, 12, 10);
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        GameState state = new(5, 12, 10, 1, content);
         state.MutableMonsters.Clear();
-        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
-        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.ShortSword)));
+        ItemContent daggerContent = content.GetItem(ItemId.Dagger);
+        ItemDefinition dagger = new(daggerContent.Id, daggerContent.Name, daggerContent.Description, daggerContent.Type, daggerContent.Color, daggerContent.MinDepth, daggerContent.Weight, daggerContent.MaxStack, daggerContent.AttackBonus, daggerContent.DefenseBonus, daggerContent.Glyph);
+        state.Player.Inventory.TryAdd(new ItemInstance(dagger));
+        ItemContent swordContent = content.GetItem(ItemId.ShortSword);
+        ItemDefinition sword = new(swordContent.Id, swordContent.Name, swordContent.Description, swordContent.Type, swordContent.Color, swordContent.MinDepth, swordContent.Weight, swordContent.MaxStack, swordContent.AttackBonus, swordContent.DefenseBonus, swordContent.Glyph);
+        state.Player.Inventory.TryAdd(new ItemInstance(sword));
         Assert.True(state.Process(GameAction.EquipItem(1)));
         Assert.Equal(6, state.Player.TotalAttack);
         Assert.True(state.Process(GameAction.EquipItem(1)));
@@ -53,9 +63,14 @@ public sealed class Phase3Tests
     [Fact]
     public void UnequipRemovesAttackAndDefenseBonuses()
     {
-        GameState state = CreateOpenState();
-        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
-        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.LeatherArmor)));
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        GameState state = CreateOpenState(1, content);
+        ItemContent daggerContent = content.GetItem(ItemId.Dagger);
+        ItemDefinition dagger = new(daggerContent.Id, daggerContent.Name, daggerContent.Description, daggerContent.Type, daggerContent.Color, daggerContent.MinDepth, daggerContent.Weight, daggerContent.MaxStack, daggerContent.AttackBonus, daggerContent.DefenseBonus, daggerContent.Glyph);
+        state.Player.Inventory.TryAdd(new ItemInstance(dagger));
+        ItemContent armorContent = content.GetItem(ItemId.LeatherArmor);
+        ItemDefinition armor = new(armorContent.Id, armorContent.Name, armorContent.Description, armorContent.Type, armorContent.Color, armorContent.MinDepth, armorContent.Weight, armorContent.MaxStack, armorContent.AttackBonus, armorContent.DefenseBonus, armorContent.Glyph);
+        state.Player.Inventory.TryAdd(new ItemInstance(armor));
         Assert.True(state.Process(GameAction.EquipItem(1)));
         Assert.True(state.Process(GameAction.EquipItem(1)));
         Assert.Equal(6, state.Player.TotalAttack);
@@ -69,7 +84,8 @@ public sealed class Phase3Tests
     [Fact]
     public void FullHealthPotionDoesNotConsumeOrAdvanceTurn()
     {
-        GameState state = new(7);
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        GameState state = new(7, 60, 34, 1, content);
         int before = state.TurnNumber;
         int count = state.Player.Inventory.Items[0].Count;
         Assert.False(state.Process(GameAction.UseItem(0)));
@@ -80,15 +96,23 @@ public sealed class Phase3Tests
     [Fact]
     public void InventoryActionsNeverMoveOrAttackAndInvalidActionsDoNotChangeHash()
     {
-        GameState state = CreateOpenState();
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        GameState state = CreateOpenState(1, content);
         Point origin = state.Player.Position;
-        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.PotionOfStrength)));
+        ItemContent strengthContent = content.GetItem(ItemId.PotionOfStrength);
+        ItemDefinition strength = new(strengthContent.Id, strengthContent.Name, strengthContent.Description, strengthContent.Type, strengthContent.Color, strengthContent.MinDepth, strengthContent.Weight, strengthContent.MaxStack, strengthContent.AttackBonus, strengthContent.DefenseBonus, strengthContent.Glyph);
+        state.Player.Inventory.TryAdd(new ItemInstance(strength));
         int useTurn = state.TurnNumber;
         Assert.True(state.Process(GameAction.UseItem(1)));
         Assert.Equal(origin, state.Player.Position);
         Assert.Equal(useTurn + 1, state.TurnNumber);
 
-        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
+
+        state.Player.Inventory.TryAdd(new ItemInstance(new ItemDefinition(
+            content.GetItem(ItemId.Dagger).Id, content.GetItem(ItemId.Dagger).Name, content.GetItem(ItemId.Dagger).Description,
+            content.GetItem(ItemId.Dagger).Type, content.GetItem(ItemId.Dagger).Color, content.GetItem(ItemId.Dagger).MinDepth,
+            content.GetItem(ItemId.Dagger).Weight, content.GetItem(ItemId.Dagger).MaxStack, content.GetItem(ItemId.Dagger).AttackBonus,
+            content.GetItem(ItemId.Dagger).DefenseBonus, content.GetItem(ItemId.Dagger).Glyph)));
         int turn = state.TurnNumber;
         Assert.True(state.Process(GameAction.EquipItem(1)));
         Assert.Equal(origin, state.Player.Position);
@@ -100,7 +124,9 @@ public sealed class Phase3Tests
         Assert.Equal(origin, state.Player.Position);
 
         int armorSlot = state.Player.Inventory.Items.Count;
-        state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.LeatherArmor)));
+        ItemContent leatherContent = content.GetItem(ItemId.LeatherArmor);
+        ItemDefinition leather = new(leatherContent.Id, leatherContent.Name, leatherContent.Description, leatherContent.Type, leatherContent.Color, leatherContent.MinDepth, leatherContent.Weight, leatherContent.MaxStack, leatherContent.AttackBonus, leatherContent.DefenseBonus, leatherContent.Glyph);
+        state.Player.Inventory.TryAdd(new ItemInstance(leather));
         Assert.True(state.Process(GameAction.EquipItem(armorSlot)));
         Assert.Equal(origin, state.Player.Position);
         int beforeUnequip = state.TurnNumber;
@@ -141,7 +167,7 @@ public sealed class Phase3Tests
         state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
         MonsterActor monster = new(MonsterCatalog.Get(MonsterType.Rat),
             state.Player.Position + new Point(0, -1));
-        state.AddMonsterForTesting(monster);
+        state.AddMonsterForScenario(monster);
         int monsterHp = monster.Hp;
         Point origin = state.Player.Position;
 
@@ -226,10 +252,10 @@ public sealed class Phase3Tests
         MonsterActor monster = new(MonsterCatalog.Get(MonsterType.Rat),
             state.Player.Position + new Point(2, 0));
         monster.Hp = 0;
-        state.AddMonsterForTesting(monster);
-        state.SetGameplayRandomForTesting(new ZeroRandom());
+        state.AddMonsterForScenario(monster);
+        state.SetGameplayRandom(new ZeroRandom());
 
-        state.DropLootForTesting(monster);
+        state.DropLootForScenario(monster);
 
         Assert.Contains(state.FloorItems, item => item.Item.Definition.MinDepth <= state.Depth);
     }
@@ -242,7 +268,7 @@ public sealed class Phase3Tests
         first.MutableMonsters.Clear();
         second.MutableMonsters.Clear();
         first.Process(GameAction.Wait);
-        first.ConsumeGameplayRandomForTesting(17);
+        first.ConsumeGameplayRandom(17);
         second.Process(GameAction.Wait);
         second.Process(GameAction.Wait);
         first.Player.Position = first.Dungeon.StairsPosition;
@@ -263,7 +289,7 @@ public sealed class Phase3Tests
         for (int y = 0; y < 12; y++)
         for (int x = 0; x < 20; x++)
             map[x, y] = TileType.Floor;
-        state.ConfigureLevelForTesting(new Dungeon(map, new Point(1, 1), new Point(18, 10)), new Point(1, 1));
+        state.ConfigureLevel(new Dungeon(map, new Point(1, 1), new Point(18, 10)), new Point(1, 1));
         state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.ScrollOfMapping)));
         Assert.True(state.Process(GameAction.UseItem(1)));
         Assert.True(state.Dungeon.IsExplored(new Point(19, 11)));
@@ -378,20 +404,24 @@ public sealed class Phase3Tests
         string.Join("|", state.FloorItems.OrderBy(item => item.Position.Y).ThenBy(item => item.Position.X)
             .Select(item => $"{item.Position.X},{item.Position.Y}:{item.Item.Definition.Id}:{item.Item.Count}"));
 
-    private static GameState CreateOpenState(int seed = 1)
+    private static GameState CreateOpenState(int seed = 1, ContentDatabase content = null!)
     {
-        GameState state = new(seed, 20, 12);
+        if (content is null) content = ContentDatabase.LoadDefault();
+        GameState state = new(seed, 20, 12, 1, content);
         TileType[,] map = new TileType[20, 12];
         for (int y = 0; y < 12; y++)
         for (int x = 0; x < 20; x++)
             map[x, y] = TileType.Floor;
-        state.ConfigureLevelForTesting(new Dungeon(map, new Point(1, 1), new Point(18, 10)),
+        state.ConfigureLevel(new Dungeon(map, new Point(1, 1), new Point(18, 10)),
             new Point(1, 1));
         return state;
     }
 
-    private sealed class ZeroRandom : Random
+    private sealed class ZeroRandom : IRandom
     {
-        public override int Next(int maxValue) => 0;
+        public ulong State { get; set; }
+        public int Next(int maxValue) => 0;
+        public int Next(int minValue, int maxValue) => minValue;
+        public double NextDouble() => 0;
     }
 }

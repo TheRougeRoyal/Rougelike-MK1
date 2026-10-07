@@ -1,11 +1,16 @@
 using Microsoft.Xna.Framework;
+using Roguelike.Content;
+
 
 namespace Roguelike;
 
 /// <summary>Executes the documented player, monster, FOV, cleanup turn order.</summary>
 public sealed class TurnManager
 {
+    private readonly ContentDatabase content;
     private readonly Pathfinder pathfinder = new();
+
+    public TurnManager(ContentDatabase content) => this.content = content ?? throw new ArgumentNullException(nameof(content));
 
     /// <summary>Processes a movement, wait, or inventory action.</summary>
     public bool ProcessTurn(GameState state, GameAction action)
@@ -25,16 +30,19 @@ public sealed class TurnManager
                 if (consumed) TickEffects(state);
                 break;
             case ActionKind.UseItem:
+                consumed = UseItem(state, action.Slot, content);
+                break;
             case ActionKind.EquipItem:
             case ActionKind.UnequipSlot:
             case ActionKind.DropItem:
-                consumed = ProcessInventoryAction(state, action);
+                consumed = ProcessInventoryAction(state, action, content);
                 break;
             default:
                 consumed = false;
                 break;
         }
         if (!consumed) return false;
+
 
         state.TurnNumber++;
         state.RunStats.TurnsSurvived = state.TurnNumber;
@@ -83,10 +91,10 @@ public sealed class TurnManager
         return false;
     }
 
-    private static bool ProcessInventoryAction(GameState state, GameAction action) =>
+    private static bool ProcessInventoryAction(GameState state, GameAction action, ContentDatabase content) =>
         action.Kind switch
         {
-            ActionKind.UseItem => UseItem(state, action.Slot),
+            ActionKind.UseItem => UseItem(state, action.Slot, content),
             ActionKind.EquipItem => EquipItem(state, action.Slot),
             ActionKind.UnequipSlot => UnequipItem(state, action.Slot),
             ActionKind.DropItem => DropItem(state, action.Slot),
@@ -98,7 +106,7 @@ public sealed class TurnManager
         TickEffects(state);
     }
 
-    private static bool UseItem(GameState state, int slot)
+    private static bool UseItem(GameState state, int slot, ContentDatabase content)
     {
         if (slot < 0 || slot >= state.Player.Inventory.Items.Count)
         {
@@ -106,17 +114,23 @@ public sealed class TurnManager
             return false;
         }
         ItemDefinition definition = state.Player.Inventory.Items[slot].Definition;
+        ItemContent itemContent = content.GetItem(definition.Id);
         if (definition.Type != ItemType.Consumable)
         {
             state.SetFeedback("That item cannot be used.", Microsoft.Xna.Framework.Color.Yellow);
             return false;
         }
-        if (definition.HealAmount > 0 && state.Player.Hp >= state.Player.MaxHp)
+        bool canHeal = itemContent.Effects.Any(e => e.Type == "heal");
+        if (canHeal && state.Player.Hp >= state.Player.MaxHp)
         {
             state.SetFeedback("You are already at full health.", Microsoft.Xna.Framework.Color.Yellow);
             return false;
         }
-        if (definition.Id == ItemId.ScrollOfTeleportation)
+        EffectJson? teleport = itemContent.Effects.FirstOrDefault(effect => effect.Type.Equals("teleport", StringComparison.OrdinalIgnoreCase));
+        EffectJson? reveal = itemContent.Effects.FirstOrDefault(effect => effect.Type.Equals("reveal_map", StringComparison.OrdinalIgnoreCase));
+        EffectJson? heal = itemContent.Effects.FirstOrDefault(effect => effect.Type.Equals("heal", StringComparison.OrdinalIgnoreCase));
+        EffectJson? buff = itemContent.Effects.FirstOrDefault(effect => effect.Type.Equals("buff", StringComparison.OrdinalIgnoreCase));
+        if (teleport is not null)
         {
             List<Point> candidates = new();
             for (int y = 0; y < state.Dungeon.Height; y++)
@@ -124,7 +138,7 @@ public sealed class TurnManager
             {
                 Point point = new(x, y);
                 if (state.Dungeon.IsWalkable(point) && point != state.Dungeon.StairsPosition &&
-                    Distance(point, state.Player.Position) >= 6 &&
+                    Distance(point, state.Player.Position) >= teleport.MinDistance &&
                     !state.IsOccupiedByPlayerOrMonster(point))
                     candidates.Add(point);
             }
@@ -137,23 +151,24 @@ public sealed class TurnManager
             state.Player.Position = candidates[state.GameplayRandom.Next(candidates.Count)];
             state.Dungeon.UpdateFieldOfView(state.Player.Position);
         }
-        else if (definition.Id == ItemId.ScrollOfMapping)
+        else if (reveal is not null)
         {
             PrepareConsumedInventoryAction(state);
             state.Dungeon.RevealAll();
         }
-        else if (definition.HealAmount > 0)
+        else if (heal is not null)
         {
             PrepareConsumedInventoryAction(state);
-            state.Player.Heal(definition.HealAmount);
+            state.Player.Heal(heal.Amount);
         }
-        else if (definition.BuffDuration > 0)
+        else if (buff is not null)
         {
             PrepareConsumedInventoryAction(state);
-            StatusEffect? effect = state.Player.Effects.FirstOrDefault(item => item.Type == StatusEffectType.Strength);
-            if (effect is null) state.Player.Effects.Add(new StatusEffect(StatusEffectType.Strength,
-                definition.AttackBonus, definition.BuffDuration));
-            else { effect.Magnitude = definition.AttackBonus; effect.RemainingTurns = definition.BuffDuration; }
+            StatusEffectType stat = buff.Stat?.Equals("defense", StringComparison.OrdinalIgnoreCase) == true
+                ? StatusEffectType.Defense : StatusEffectType.Strength;
+            StatusEffect? effect = state.Player.Effects.FirstOrDefault(item => item.Type == stat);
+            if (effect is null) state.Player.Effects.Add(new StatusEffect(stat, buff.Amount, buff.Turns));
+            else { effect.Magnitude = buff.Amount; effect.RemainingTurns = buff.Turns; }
         }
         state.Player.Inventory.RemoveOne(slot);
         state.SetFeedback($"Used {definition.Name}.", Microsoft.Xna.Framework.Color.LimeGreen);
@@ -286,16 +301,21 @@ public sealed class TurnManager
                               state.Dungeon.HasLineOfSight(monster.Position, state.Player.Position);
             if (seesPlayer)
             {
-                monster.AlertTurns = 5;
+                monster.AlertTurns = monster.Definition.Params.TryGetValue("alertTurns", out int alertTurns)
+                    ? alertTurns : 5;
                 monster.LastKnownPlayerPosition = state.Player.Position;
             }
-            if (monster.Definition.Behavior == MonsterBehavior.Slow && state.TurnNumber % 2 == 0)
+            int actEvery = monster.Definition.Params.TryGetValue("actEveryNTurns", out int configuredActEvery)
+                ? configuredActEvery : 1;
+            if (actEvery > 1 && (state.TurnNumber - 1) % actEvery != 0)
             {
                 continue;
             }
 
             if (monster.Definition.Behavior == MonsterBehavior.Ranged &&
-                seesPlayer && distance >= 2 && distance <= 5)
+                seesPlayer &&
+                distance >= monster.Definition.Params.GetValueOrDefault("minRange", 2) &&
+                distance <= monster.Definition.Params.GetValueOrDefault("maxRange", 5))
             {
                 CombatResult ranged = CombatResolver.Resolve(monster, state.Player, state.GameplayRandom);
                 state.RunStats.DamageTaken += ranged.Damage;
@@ -333,7 +353,7 @@ public sealed class TurnManager
                 }
                 continue;
             }
-            bool alwaysChase = monster.Definition.Type == MonsterType.Rat;
+            bool alwaysChase = monster.Definition.Params.GetValueOrDefault("alwaysChase", 0) != 0;
             if (monster.AlertTurns <= 0 && !alwaysChase) continue;
             Point targetPosition = monster.LastKnownPlayerPosition ?? state.Player.Position;
             IReadOnlyList<Point> path = pathfinder.FindPath(state.Dungeon, monster.Position,

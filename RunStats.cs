@@ -28,4 +28,15 @@ public sealed class RunStats
         MaxDepth = 1;
         CauseOfDeath = null;
     }
+
+    internal void Restore(int turns, int slain, int pickedUp, int dealt, int taken, int maxDepth, string? cause)
+    {
+        TurnsSurvived = turns;
+        MonstersSlain = slain;
+        ItemsPickedUp = pickedUp;
+        DamageDealt = dealt;
+        DamageTaken = taken;
+        MaxDepth = maxDepth;
+        CauseOfDeath = cause;
+    }
 }

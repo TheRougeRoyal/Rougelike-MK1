@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using System.Text;
 
 namespace Roguelike;
 
@@ -63,9 +64,6 @@ public sealed class Dungeon
         Generate(random);
     }
 
-    /// <summary>Compatibility constructor for older callers.</summary>
-    public Dungeon(int width, int height, Random random) : this(width, height, new RandomAdapter(random)) { }
-
     /// <summary>Creates a dungeon from a hand-built tile matrix.</summary>
     /// <param name="map">Tiles indexed by x then y.</param>
     /// <param name="playerStart">Player start position.</param>
@@ -129,6 +127,25 @@ public sealed class Dungeon
             foreach (Point neighbor in Neighbors(point))
                 if (InBounds(neighbor)) explored[neighbor.X, neighbor.Y] = true;
         }
+    }
+
+    internal string ExportExplored()
+    {
+        byte[] bits = new byte[(Width * Height + 7) / 8];
+        for (int index = 0; index < Width * Height; index++)
+            if (explored[index % Width, index / Width]) bits[index / 8] |= (byte)(1 << (index % 8));
+        return Convert.ToBase64String(bits);
+    }
+
+    internal void RestoreExplored(string encoded)
+    {
+        byte[] bits;
+        try { bits = Convert.FromBase64String(encoded); }
+        catch (FormatException exception) { throw new InvalidDataException("Save explored map is invalid.", exception); }
+        if (bits.Length != (Width * Height + 7) / 8)
+            throw new InvalidDataException("Save explored map has an invalid length.");
+        for (int index = 0; index < Width * Height; index++)
+            explored[index % Width, index / Width] = (bits[index / 8] & (1 << (index % 8))) != 0;
     }
 
     /// <summary>

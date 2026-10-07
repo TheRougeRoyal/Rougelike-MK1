@@ -81,19 +81,3 @@ public static class RandomStreams
         return value ^ (value >> 31);
     }
 }
-
-/// <summary>Adapter retained for compatibility with older callers.</summary>
-public sealed class RandomAdapter : IRandom
-{
-    private readonly Random random;
-    /// <summary>Creates an adapter.</summary>
-    public RandomAdapter(Random random) => this.random = random ?? throw new ArgumentNullException(nameof(random));
-    /// <inheritdoc />
-    public ulong State { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
-    /// <inheritdoc />
-    public int Next(int maxExclusive) => random.Next(maxExclusive);
-    /// <inheritdoc />
-    public int Next(int minInclusive, int maxExclusive) => random.Next(minInclusive, maxExclusive);
-    /// <inheritdoc />
-    public double NextDouble() => random.NextDouble();
-}

@@ -7,7 +7,7 @@ public enum UiCommandKind
 {
     None, Move, Wait, Accept, Cancel, Quit, Start, Help, CloseHelp, Pause, Resume, Restart,
     ConfirmRestart, CancelRestart, Inventory, Drop, UnequipWeapon, UnequipArmor, MenuUp, MenuDown,
-    NewRun, NewRunWithSeed, RunHistory, SaveAndQuit, AbandonRun
+    NewRun, NewRunWithSeed, RunHistory, SaveAndQuit, AbandonRun, Continue, ConfirmAbandon, CancelAbandon
 }
 
 /// <summary>A keyboard-independent UI command.</summary>

@@ -28,7 +28,4 @@ public static class CombatResolver
         return new CombatResult(attacker, defender, damage, !defender.IsAlive);
     }
 
-    /// <summary>Compatibility overload for legacy callers.</summary>
-    public static CombatResult Resolve(Actor attacker, Actor defender, Random random) =>
-        Resolve(attacker, defender, new RandomAdapter(random));
 }

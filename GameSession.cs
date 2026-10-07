@@ -1,14 +1,26 @@
 using Microsoft.Xna.Framework;
+using Roguelike.Content;
+using Roguelike.Persistence;
+using Roguelike.Runs;
+
 
 namespace Roguelike;
 
 /// <summary>Headless UI/session coordinator shared by the game loop and tests.</summary>
 public sealed class GameSession
 {
+    private readonly ContentDatabase content;
+    private readonly ISaveStore saveStore;
+    private readonly IRunHistoryStore historyStore;
+    private bool historyRecorded;
     /// <summary>Creates a session with a fresh run.</summary>
-    public GameSession(int seed, int width = 60, int height = 34)
+    public GameSession(int seed, int width = 60, int height = 34, ContentDatabase? content = null,
+        ISaveStore? saveStore = null, IRunHistoryStore? historyStore = null)
     {
-        State = new GameState(seed, width, height);
+        this.content = content ?? ContentDatabase.LoadDefault();
+        this.saveStore = saveStore ?? new MemorySaveStore();
+        this.historyStore = historyStore ?? new MemoryRunHistoryStore();
+        State = new GameState(seed, width, height, 1, this.content);
         Screens = new ScreenStateMachine();
     }
     /// <summary>Gets the current game state.</summary>
@@ -19,12 +31,24 @@ public sealed class GameSession
     public int InventoryCursor { get; private set; }
     /// <summary>Gets whether the UI requested application exit.</summary>
     public bool QuitRequested { get; private set; }
+    public bool HasValidSave
+    {
+        get
+        {
+            try { _ = GameStatePersistence.Load(saveStore, content.ContentHash, content); return true; }
+            catch (InvalidDataException) { return false; }
+        }
+    }
 
     /// <summary>Executes one UI command without any window dependency.</summary>
     public void Execute(UiCommand command)
     {
         if (State.Status == GameStatus.Dead && Screens.Screen == ScreenKind.Playing)
+        {
+            saveStore.Delete();
+            RecordHistory("dead");
             Screens.GameOver();
+        }
         switch (command.Kind)
         {
             case UiCommandKind.Quit: QuitRequested = true; break;
@@ -35,6 +59,46 @@ public sealed class GameSession
                     Screens.Start();
                     InventoryCursor = 0;
                 }
+                break;
+            case UiCommandKind.NewRun:
+                if (Screens.Screen == ScreenKind.Title) StartNewRun(State.Seed);
+                break;
+            case UiCommandKind.Continue:
+                if (Screens.Screen == ScreenKind.Title && HasValidSave)
+                {
+                    State = GameStatePersistence.Load(saveStore, content.ContentHash, content);
+                    Screens.Start();
+                }
+                break;
+            case UiCommandKind.NewRunWithSeed:
+                if (Screens.Screen == ScreenKind.Title) Screens.ShowSeedEntry();
+                break;
+            case UiCommandKind.RunHistory:
+                Screens.ShowRunHistory();
+                break;
+            case UiCommandKind.SaveAndQuit:
+                GameStatePersistence.Save(State, saveStore, content.ContentHash);
+                QuitRequested = true;
+                break;
+            case UiCommandKind.AbandonRun:
+                if (Screens.Overlay == UiOverlay.AbandonConfirmation)
+                {
+                    RecordHistory("retired");
+                    saveStore.Delete();
+                    Screens.ConfirmAbandon();
+                }
+                else Screens.RequestAbandon();
+                break;
+            case UiCommandKind.ConfirmAbandon:
+                if (Screens.Overlay == UiOverlay.AbandonConfirmation)
+                {
+                    RecordHistory("retired");
+                    saveStore.Delete();
+                    Screens.ConfirmAbandon();
+                }
+                break;
+            case UiCommandKind.CancelAbandon:
+                if (Screens.Overlay == UiOverlay.AbandonConfirmation) Screens.CloseOverlay();
                 break;
             case UiCommandKind.Help: Screens.ShowHelp(); break;
             case UiCommandKind.CloseHelp: Screens.CloseHelp(); break;
@@ -51,7 +115,8 @@ public sealed class GameSession
             case UiCommandKind.Accept: Accept(); break;
             case UiCommandKind.Cancel:
                 if (Screens.Screen == ScreenKind.GameOver) Screens.Title();
-                else Screens.CloseOverlay();
+                else if (Screens.Screen is ScreenKind.SeedEntry or ScreenKind.RunHistory) Screens.ReturnToTitle();
+                else if (!Screens.CloseOverlay()) Screens.ReturnToTitle();
                 break;
             case UiCommandKind.Inventory:
                 if (Screens.ToggleInventory()) InventoryCursor = 0;
@@ -71,8 +136,10 @@ public sealed class GameSession
                 if (Screens.ConfirmRestart()) RestartImmediate();
                 break;
             case UiCommandKind.CancelRestart: Screens.CancelRestart(); break;
-            case UiCommandKind.Move: State.Process(GameAction.Move(command.Direction)); break;
-            case UiCommandKind.Wait: State.Process(GameAction.Wait); break;
+            case UiCommandKind.Move: ProcessAndAutosave(GameAction.Move(command.Direction)); break;
+            case UiCommandKind.Wait: ProcessAndAutosave(GameAction.Wait); break;
+            case UiCommandKind.None: break;
+            default: throw new InvalidOperationException($"Unhandled UI command: {command.Kind}");
         }
         if (State.Status == GameStatus.Dead && Screens.Screen == ScreenKind.Playing)
         {
@@ -105,10 +172,36 @@ public sealed class GameSession
     private void RestartImmediate()
     {
         State.Restart();
+        historyRecorded = false;
         Screens.RestartRun();
         InventoryCursor = 0;
     }
 
     private void ClampCursor() =>
         InventoryCursor = Math.Clamp(InventoryCursor, 0, Math.Max(0, State.Player.Inventory.Items.Count - 1));
+
+    private void StartNewRun(int seed)
+    {
+        State = new GameState(seed, State.Width, State.Height, 1, content);
+        historyRecorded = false;
+        Screens.Start();
+        InventoryCursor = 0;
+    }
+
+    private void RecordHistory(string cause)
+    {
+        if (historyRecorded) return;
+        historyRecorded = true;
+        historyStore.Append(new RunRecord(Guid.NewGuid().ToString("N"), State.Seed, DateTime.UtcNow,
+            State.RunStats.MaxDepth, State.Player.Level, State.RunStats.TurnsSurvived,
+            State.RunStats.MonstersSlain, cause, content.ContentHash));
+    }
+
+    private void ProcessAndAutosave(GameAction action)
+    {
+        int depth = State.Depth;
+        State.Process(action);
+        if (State.Status == GameStatus.Playing && State.Depth != depth)
+            GameStatePersistence.Save(State, saveStore, content.ContentHash);
+    }
 }

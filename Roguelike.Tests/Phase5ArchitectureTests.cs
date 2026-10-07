@@ -36,7 +36,7 @@ public sealed class Phase5ArchitectureTests
         original.Process(GameAction.Wait);
         MemorySaveStore store = new();
         GameStatePersistence.Save(original, store, content.ContentHash);
-        GameState loaded = GameStatePersistence.Load(store, content.ContentHash);
+        GameState loaded = GameStatePersistence.Load(store, content.ContentHash, content);
         Assert.Equal(original.GameplayRandomState, loaded.GameplayRandomState);
         Assert.Equal(original.Player.Position, loaded.Player.Position);
         Assert.Equal(original.Player.Hp, loaded.Player.Hp);
@@ -52,8 +52,8 @@ public sealed class Phase5ArchitectureTests
         Assert.Equal(original.Depth, loaded.Depth);
         Assert.Equal(original.TurnNumber, loaded.TurnNumber);
         Assert.Equal(original.Status, loaded.Status);
-        Assert.Equal(original.Monsters.Select(monster => (monster.Definition.Type, monster.Position, monster.Hp)),
-            loaded.Monsters.Select(monster => (monster.Definition.Type, monster.Position, monster.Hp)));
+        Assert.Equal(original.Monsters.Select(monster => (monster.Definition.Id, monster.Position, monster.Hp)),
+            loaded.Monsters.Select(monster => (monster.Definition.Id, monster.Position, monster.Hp)));
         Assert.Equal(original.FloorItems.Select(item => (item.Position, item.Item.Definition.Id, item.Item.Count)),
             loaded.FloorItems.Select(item => (item.Position, item.Item.Definition.Id, item.Item.Count)));
         Assert.Equal(original.StateHash, loaded.StateHash);

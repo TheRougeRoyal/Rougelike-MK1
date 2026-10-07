@@ -17,6 +17,16 @@ public interface IRunHistoryStore
     void Append(RunRecord record);
 }
 
+public static class RunRanking
+{
+    public static IReadOnlyList<RunRecord> Top(IReadOnlyList<RunRecord> records) =>
+        records.OrderByDescending(record => record.DepthReached)
+            .ThenByDescending(record => record.Level)
+            .ThenBy(record => record.Turns)
+            .Take(10)
+            .ToArray();
+}
+
 /// <summary>In-memory history store.</summary>
 public sealed class MemoryRunHistoryStore : IRunHistoryStore
 {

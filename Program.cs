@@ -14,27 +14,20 @@ public static class Program
     /// <param name="args">Optional first argument containing an integer seed.</param>
     public static void Main(string[] args)
     {
-        (int seed, string? contentDirectory) = ParseOptions(args);
-        try
-        {
-            _ = contentDirectory is null ? ContentDatabase.LoadDefault() : ContentDatabase.LoadDirectory(contentDirectory);
-        }
-        catch (ContentLoadException exception)
-        {
-            Console.Error.WriteLine($"Content validation failed:{Environment.NewLine}{exception.Message}");
-            return;
-        }
+        (int seed, string? contentDirectory, string saveDirectory) = ParseOptions(args);
+        ContentDatabase content = contentDirectory is null ? ContentDatabase.LoadDefault() : ContentDatabase.LoadDirectory(contentDirectory);
         Console.WriteLine($"Using dungeon seed: {seed}");
         Console.WriteLine($"Using gameplay seed: {GameState.CreateGameplaySeed(seed)}");
 
-        using GameMain game = new(seed);
+        using GameMain game = new(seed, content, saveDirectory);
         game.Run();
     }
 
-    private static (int Seed, string? ContentDirectory) ParseOptions(string[] args)
+    private static (int Seed, string? ContentDirectory, string SaveDirectory) ParseOptions(string[] args)
     {
         int seed = Random.Shared.Next();
         string? content = null;
+        string saveDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Roguelike");
         for (int index = 0; index < args.Length; index++)
         {
             if (args[index] == "--seed" && index + 1 < args.Length &&
@@ -42,9 +35,11 @@ public static class Program
                 seed = parsed;
             else if (args[index] == "--content" && index + 1 < args.Length)
                 content = args[++index];
+            else if (args[index] == "--save-dir" && index + 1 < args.Length)
+                saveDirectory = args[++index];
             else if (index == 0 && int.TryParse(args[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed))
                 seed = parsed;
         }
-        return (seed, content);
+        return (seed, content, saveDirectory);
     }
 }

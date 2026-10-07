@@ -33,4 +33,10 @@ public sealed class MessageLog
     }
     /// <summary>Clears all messages.</summary>
     public void Clear() => entries.Clear();
+
+    internal void Restore(IEnumerable<MessageLogEntry> restored)
+    {
+        entries.Clear();
+        entries.AddRange(restored.TakeLast(Capacity));
+    }
 }

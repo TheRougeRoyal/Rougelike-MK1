@@ -1,6 +1,8 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Roguelike.Content;
+
 
 namespace Roguelike;
 
@@ -13,6 +15,7 @@ public sealed class GameMain : Game
     private const int HudHeight = 120;
     private readonly GraphicsDeviceManager graphics;
     private readonly int seed;
+    private readonly ContentDatabase content;
     private SpriteBatch? spriteBatch;
     private GameRenderer? renderer;
     private GameSession? session;
@@ -20,9 +23,12 @@ public sealed class GameMain : Game
     private IReadOnlySet<string> previousInputKeys = new HashSet<string>();
 
     /// <summary>Initializes the game with a deterministic seed.</summary>
-    public GameMain(int seed)
+    private readonly string saveDirectory;
+    public GameMain(int seed, ContentDatabase content, string? saveDirectory = null)
     {
         this.seed = seed;
+        this.content = content;
+        this.saveDirectory = saveDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Roguelike");
         graphics = new GraphicsDeviceManager(this)
         {
             PreferredBackBufferWidth = MapWidth * TileSize,
@@ -35,7 +41,8 @@ public sealed class GameMain : Game
     /// <inheritdoc />
     protected override void Initialize()
     {
-        session = new GameSession(seed, MapWidth, MapHeight);
+        session = new GameSession(seed, MapWidth, MapHeight, content, new Persistence.FileSaveStore(saveDirectory),
+            new Runs.FileRunHistoryStore(saveDirectory));
         Window.Title = $"Roguelike - Seed {seed}";
         base.Initialize();
     }

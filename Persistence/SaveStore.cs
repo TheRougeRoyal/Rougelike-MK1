@@ -27,14 +27,20 @@ public sealed class FileSaveStore : ISaveStore
     }
     /// <inheritdoc />
     public string? Read() => File.Exists(path) ? File.ReadAllText(path) : null;
+    public string? ReadBackup() => File.Exists(path + ".bak") ? File.ReadAllText(path + ".bak") : null;
     /// <inheritdoc />
     public void Write(string json)
     {
         string temp = path + ".tmp";
         string backup = path + ".bak";
-        File.WriteAllText(temp, json, Encoding.UTF8);
-        using (FileStream stream = new(temp, FileMode.Open, FileAccess.Read, FileShare.None))
+        using (FileStream stream = new(temp, FileMode.Create, FileAccess.Write, FileShare.None,
+            4096, FileOptions.WriteThrough))
+        using (StreamWriter writer = new(stream, Encoding.UTF8))
+        {
+            writer.Write(json);
+            writer.Flush();
             stream.Flush(true);
+        }
         if (File.Exists(path)) File.Copy(path, backup, true);
         File.Move(temp, path, true);
     }
@@ -97,13 +103,13 @@ public static class SaveCodec
         try { dto = JsonSerializer.Deserialize<SaveDto>(json, Options) ?? throw new InvalidDataException("Save is empty."); }
         catch (JsonException exception) { throw new InvalidDataException("Save JSON is corrupt or truncated.", exception); }
         if (dto.SchemaVersion > 2) throw new InvalidDataException($"Save schemaVersion {dto.SchemaVersion} is newer than supported version 2.");
-        if (dto.SchemaVersion == 1) dto.SchemaVersion = 2;
         string expected = dto.Checksum;
         dto.Checksum = string.Empty;
         string unsigned = JsonSerializer.Serialize(dto, Options);
         string actual = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(unsigned))).ToLowerInvariant();
         if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Save checksum mismatch.");
+        if (dto.SchemaVersion == 1) dto.SchemaVersion = 2;
         dto.Checksum = expected;
         return dto;
     }

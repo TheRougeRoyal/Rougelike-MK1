@@ -1,5 +1,7 @@
 using Microsoft.Xna.Framework;
 using Xunit;
+using Roguelike.Content;
+
 
 namespace Roguelike.Tests;
 
@@ -60,9 +62,11 @@ public sealed class Phase4Tests
     {
         for (int seed = 0; seed < 50; seed++)
         {
-            GameState state = new(seed, 20, 12);
-            state.ConfigureLevelForTesting(CreateOpenDungeon(), new Point(1, 1));
-            state.Player.Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.ScrollOfTeleportation)));
+            GameState state = new(seed, 20, 12, 1, ContentDatabase.LoadDefault());
+            state.ConfigureLevel(CreateOpenDungeon(), new Point(1, 1));
+            ItemContent teleportContent = ContentDatabase.LoadDefault().GetItem(ItemId.ScrollOfTeleportation);
+            ItemDefinition teleport = new(teleportContent.Id, teleportContent.Name, teleportContent.Description, teleportContent.Type, teleportContent.Color, teleportContent.MinDepth, teleportContent.Weight, teleportContent.MaxStack, teleportContent.AttackBonus, teleportContent.DefenseBonus, teleportContent.Glyph);
+            state.Player.Inventory.TryAdd(new ItemInstance(teleport));
             Assert.True(state.Process(GameAction.UseItem(1)));
             Assert.NotEqual(state.Dungeon.StairsPosition, state.Player.Position);
         }
@@ -142,7 +146,7 @@ public sealed class Phase4Tests
     {
         GameState state = CreateOpenState();
         MonsterDefinition definition = MonsterCatalog.Get(MonsterType.Rat) with { MaxHp = 1 };
-        state.AddMonsterForTesting(new MonsterActor(definition, state.Player.Position + new Point(1, 0)));
+        state.AddMonsterForScenario(new MonsterActor(definition, state.Player.Position + new Point(1, 0)));
         Assert.True(state.Process(GameAction.Move(new Point(1, 0))));
         Assert.Equal(1, state.RunStats.MonstersSlain);
         Assert.True(state.RunStats.DamageDealt >= 1);
@@ -159,7 +163,7 @@ public sealed class Phase4Tests
 
         GameState death = CreateOpenState();
         MonsterDefinition killer = MonsterCatalog.Get(MonsterType.Brute) with { Attack = 100, MaxHp = 100 };
-        death.AddMonsterForTesting(new MonsterActor(killer, death.Player.Position + new Point(1, 0)));
+        death.AddMonsterForScenario(new MonsterActor(killer, death.Player.Position + new Point(1, 0)));
         Assert.True(death.Process(GameAction.Wait));
         Assert.Equal("Brute", death.RunStats.CauseOfDeath);
         Assert.True(death.RunStats.DamageTaken > 0);
@@ -205,7 +209,7 @@ public sealed class Phase4Tests
     private static GameState CreateOpenState()
     {
         GameState state = new(1, 20, 12);
-        state.ConfigureLevelForTesting(CreateOpenDungeon(), new Point(1, 1));
+        state.ConfigureLevel(CreateOpenDungeon(), new Point(1, 1));
         return state;
     }
 }

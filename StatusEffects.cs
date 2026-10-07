@@ -1,7 +1,7 @@
 namespace Roguelike;
 
 /// <summary>Supported timed player effects.</summary>
-public enum StatusEffectType { Strength }
+public enum StatusEffectType { Strength, Defense }
 
 /// <summary>A timed effect with refreshable duration.</summary>
 public sealed class StatusEffect

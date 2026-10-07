@@ -1,4 +1,6 @@
 using Microsoft.Xna.Framework;
+using Roguelike.Content;
+
 
 namespace Roguelike;
 
@@ -42,11 +44,19 @@ public abstract class Actor
 /// <summary>The player-controlled actor.</summary>
 public sealed class PlayerActor : Actor
 {
+    private readonly record struct LevelUpBonus(int MaxHp, int Attack, int Defense, int DefenseEvery, int Heal);
     /// <summary>Creates a player with the Phase 2 starting statistics.</summary>
-    public PlayerActor(Point position) : base("Player", position, 30, 5, 1)
+    private readonly int experiencePerLevel;
+    private readonly LevelUpBonus levelUp;
+
+    public PlayerActor(Point position, ContentDatabase content) : base("Player", position, content.Balance.StartingHp, content.Balance.StartingAttack, content.Balance.StartingDefense)
     {
+        experiencePerLevel = content.Balance.XpPerLevel;
+        levelUp = new LevelUpBonus(content.Balance.LevelMaxHpBonus, content.Balance.LevelAttackBonus,
+            content.Balance.LevelDefenseBonus, content.Balance.LevelDefenseEvery, content.Balance.LevelHealAmount);
         Inventory = new Inventory();
-        Inventory.TryAdd(new ItemInstance(ItemCatalog.Get(ItemId.HealingPotion)));
+        foreach (string id in content.Balance.StartingLoadout)
+            Inventory.TryAdd(new ItemInstance(content.CreateDefinition(id)));
     }
 
     /// <summary>Gets the current level.</summary>
@@ -54,7 +64,7 @@ public sealed class PlayerActor : Actor
     /// <summary>Gets accumulated experience.</summary>
     public int Experience { get; internal set; }
     /// <summary>Gets the exact experience threshold for the next level.</summary>
-    public int ExperienceToNextLevel => 20 * Level;
+    public int ExperienceToNextLevel => experiencePerLevel * Level;
     /// <summary>Gets the player's glyph.</summary>
     public override char Glyph => '@';
     /// <summary>Gets the player's inventory.</summary>
@@ -71,7 +81,8 @@ public sealed class PlayerActor : Actor
         Effects.Where(effect => effect.Type == StatusEffectType.Strength)
             .Sum(effect => effect.Magnitude);
     /// <inheritdoc />
-    public override int TotalDefense => Defense + (EquippedArmor?.Definition.DefenseBonus ?? 0);
+    public override int TotalDefense => Defense + (EquippedArmor?.Definition.DefenseBonus ?? 0) +
+        Effects.Where(effect => effect.Type == StatusEffectType.Defense).Sum(effect => effect.Magnitude);
 
     /// <summary>Heals ten points, capped at maximum hit points.</summary>
     public int Heal() => Heal(10);
@@ -93,10 +104,10 @@ public sealed class PlayerActor : Actor
         {
             Experience -= ExperienceToNextLevel;
             Level++;
-            MaxHp += 5;
-            Heal(10);
-            Attack++;
-            if (Level % 3 == 0) Defense++;
+            MaxHp += levelUp.MaxHp;
+            Heal(levelUp.Heal);
+            Attack += levelUp.Attack;
+            if (Level % levelUp.DefenseEvery == 0) Defense += levelUp.Defense;
             leveled = true;
         }
         return leveled;

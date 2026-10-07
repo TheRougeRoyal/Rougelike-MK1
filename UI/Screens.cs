@@ -3,7 +3,7 @@ namespace Roguelike;
 /// <summary>UI-layer screens.</summary>
 public enum ScreenKind { Title, Playing, Paused, GameOver, Help, SeedEntry, RunHistory }
 /// <summary>Whether the playing screen has an overlay.</summary>
-public enum UiOverlay { None, Inventory, Examine, RestartConfirmation }
+public enum UiOverlay { None, Inventory, Examine, RestartConfirmation, AbandonConfirmation }
 
 /// <summary>Small UI state machine with rejected transitions represented by false.</summary>
 public sealed class ScreenStateMachine
@@ -109,6 +109,42 @@ public sealed class ScreenStateMachine
         if (Screen is not (ScreenKind.GameOver or ScreenKind.Paused)) return false;
         Overlay = UiOverlay.None;
         Screen = ScreenKind.Playing;
+        return true;
+    }
+
+    public bool ShowSeedEntry()
+    {
+        if (Screen != ScreenKind.Title) return false;
+        Screen = ScreenKind.SeedEntry;
+        return true;
+    }
+
+    public bool ShowRunHistory()
+    {
+        if (Screen != ScreenKind.Title) return false;
+        Screen = ScreenKind.RunHistory;
+        return true;
+    }
+
+    public bool ReturnToTitle()
+    {
+        if (Screen is not (ScreenKind.SeedEntry or ScreenKind.RunHistory)) return false;
+        Screen = ScreenKind.Title;
+        return true;
+    }
+
+    public bool RequestAbandon()
+    {
+        if (Screen != ScreenKind.Playing || Overlay != UiOverlay.None) return false;
+        Overlay = UiOverlay.AbandonConfirmation;
+        return true;
+    }
+
+    public bool ConfirmAbandon()
+    {
+        if (Screen != ScreenKind.Playing || Overlay != UiOverlay.AbandonConfirmation) return false;
+        Overlay = UiOverlay.None;
+        Screen = ScreenKind.Title;
         return true;
     }
     /// <summary>Moves the paused-menu selection.</summary>

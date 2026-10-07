@@ -2,49 +2,26 @@ using Microsoft.Xna.Framework;
 
 namespace Roguelike;
 
-/// <summary>Monster kinds in the game.</summary>
-public enum MonsterType { Rat, Goblin, Archer, Brute }
+// ponytail: MonsterType deleted as it is replaced by string IDs in ContentDatabase.
 
 /// <summary>Monster decision model.</summary>
 public enum MonsterBehavior { Idle, Chase, Ranged, Slow }
 
 /// <summary>Immutable monster definition.</summary>
 public sealed record MonsterDefinition(
-    MonsterType Type, string Name, char Glyph, int MaxHp, int Attack, int Defense,
-    int SightRadius, MonsterBehavior Behavior, Color Color, int MinDepth, int XpValue)
+    string Id, string Name, char Glyph, int MaxHp, int Attack, int Defense,
+    int SightRadius, MonsterBehavior Behavior, Color Color, int MinDepth, int XpValue,
+    IReadOnlyDictionary<string, int> Params)
 {
-}
-
-/// <summary>Built-in monster catalog.</summary>
-public static class MonsterCatalog
-{
-    private static readonly IReadOnlyList<MonsterDefinition> definitions = Array.AsReadOnly(new MonsterDefinition[]
+    public MonsterDefinition(string id, string name, char glyph, int maxHp, int attack, int defense,
+        int sightRadius, MonsterBehavior behavior, Color color, int minDepth, int xpValue)
+        : this(id, name, glyph, maxHp, attack, defense, sightRadius, behavior, color, minDepth, xpValue,
+            new Dictionary<string, int>())
     {
-        new(MonsterType.Rat, "Rat", 'r', 6, 3, 0, 6, MonsterBehavior.Chase, Color.LightGray, 1, 8),
-        new(MonsterType.Goblin, "Goblin", 'g', 10, 4, 1, 7, MonsterBehavior.Chase, Color.LimeGreen, 1, 12),
-        new(MonsterType.Archer, "Archer", 'a', 8, 4, 2, 9, MonsterBehavior.Ranged, Color.CornflowerBlue, 2, 18),
-        new(MonsterType.Brute, "Brute", 'B', 24, 7, 3, 3, MonsterBehavior.Slow, Color.OrangeRed, 3, 30)
-    });
-
-    /// <summary>Gets all definitions.</summary>
-    public static IReadOnlyList<MonsterDefinition> All => definitions;
-    /// <summary>Gets a definition by kind.</summary>
-    public static MonsterDefinition Get(MonsterType type)
-    {
-        for (int i = 0; i < definitions.Count; i++)
-            if (definitions[i].Type == type) return definitions[i];
-        throw new ArgumentOutOfRangeException(nameof(type));
-    }
-
-    /// <summary>Gets definitions available at a depth.</summary>
-    public static int CopyForDepth(int depth, Span<MonsterDefinition> destination)
-    {
-        int count = 0;
-        for (int i = 0; i < definitions.Count && count < destination.Length; i++)
-            if (definitions[i].MinDepth <= depth) destination[count++] = definitions[i];
-        return count;
     }
 }
+
+// ponytail: deleted MonsterCatalog as it is now replaced by ContentDatabase.
 
 /// <summary>An enemy actor.</summary>
 public sealed class MonsterActor : Actor
