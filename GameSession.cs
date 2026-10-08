@@ -15,10 +15,12 @@ public sealed class GameSession
     private bool historyRecorded;
     /// <summary>Creates a session with a fresh run.</summary>
     public GameSession(int seed, int width = 60, int height = 34, ContentDatabase? content = null,
-        ISaveStore? saveStore = null, IRunHistoryStore? historyStore = null)
+        ISaveStore? saveStore = null, IRunHistoryStore? historyStore = null, string? saveDirectory = null)
     {
         this.content = content ?? ContentDatabase.LoadDefault();
-        this.saveStore = saveStore ?? new MemorySaveStore();
+        this.saveStore = saveStore ?? (saveDirectory is null
+            ? new MemorySaveStore()
+            : new FileSaveStore(saveDirectory));
         this.historyStore = historyStore ?? new MemoryRunHistoryStore();
         State = new GameState(seed, width, height, 1, this.content);
         Screens = new ScreenStateMachine();
@@ -35,8 +37,7 @@ public sealed class GameSession
     {
         get
         {
-            try { _ = GameStatePersistence.Load(saveStore, content.ContentHash, content); return true; }
-            catch (InvalidDataException) { return false; }
+            return GameStatePersistence.Load(saveStore, content.ContentHash, content).IsSuccess;
         }
     }
 
@@ -66,8 +67,12 @@ public sealed class GameSession
             case UiCommandKind.Continue:
                 if (Screens.Screen == ScreenKind.Title && HasValidSave)
                 {
-                    State = GameStatePersistence.Load(saveStore, content.ContentHash, content);
-                    Screens.Start();
+                    LoadResult result = GameStatePersistence.Load(saveStore, content.ContentHash, content);
+                    if (result.State is not null)
+                    {
+                        State = result.State;
+                        Screens.Start();
+                    }
                 }
                 break;
             case UiCommandKind.NewRunWithSeed:

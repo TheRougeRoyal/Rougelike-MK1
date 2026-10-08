@@ -1,6 +1,4 @@
-using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 
 namespace Roguelike.Persistence;
 
@@ -9,13 +7,18 @@ public interface ISaveStore
 {
     /// <summary>Reads the save or returns null when absent.</summary>
     string? Read();
+    /// <summary>Reads the previous atomic-save backup, if available.</summary>
+    string? ReadBackup() => null;
     /// <summary>Atomically replaces the save.</summary>
     void Write(string json);
     /// <summary>Deletes the save.</summary>
     void Delete();
 }
 
-/// <summary>Atomic file-backed save store.</summary>
+/// <summary>
+/// Atomic file-backed save store. Multiple instances sharing a directory use
+/// last-writer-wins semantics; a failed write leaves the prior save untouched.
+/// </summary>
 public sealed class FileSaveStore : ISaveStore
 {
     private readonly string path;
@@ -33,16 +36,27 @@ public sealed class FileSaveStore : ISaveStore
     {
         string temp = path + ".tmp";
         string backup = path + ".bak";
-        using (FileStream stream = new(temp, FileMode.Create, FileAccess.Write, FileShare.None,
-            4096, FileOptions.WriteThrough))
-        using (StreamWriter writer = new(stream, Encoding.UTF8))
+        try
         {
-            writer.Write(json);
-            writer.Flush();
-            stream.Flush(true);
+            using (FileStream stream = new(temp, FileMode.Create, FileAccess.Write, FileShare.None,
+                4096, FileOptions.WriteThrough))
+            using (StreamWriter writer = new(stream, new UTF8Encoding(false)))
+            {
+                writer.Write(json);
+                writer.Flush();
+                stream.Flush(true);
+            }
+            if (File.Exists(path)) File.Copy(path, backup, true);
+            File.Move(temp, path, true);
         }
-        if (File.Exists(path)) File.Copy(path, backup, true);
-        File.Move(temp, path, true);
+        finally
+        {
+            if (File.Exists(temp))
+            {
+                try { File.Delete(temp); }
+                catch { /* Preserve the previous save if cleanup is denied. */ }
+            }
+        }
     }
     /// <inheritdoc />
     public void Delete()
@@ -56,62 +70,22 @@ public sealed class MemorySaveStore : ISaveStore
 {
     /// <summary>Gets the current stored JSON.</summary>
     public string? Value { get; private set; }
+    public string? Backup { get; private set; }
     /// <inheritdoc />
     public string? Read() => Value;
+    public string? ReadBackup() => Backup;
+    /// <summary>Replaces the current raw value for deterministic failure tests.</summary>
+    public void Replace(string? json) => Value = json;
     /// <inheritdoc />
-    public void Write(string json) => Value = json;
+    public void Write(string json)
+    {
+        Backup = Value;
+        Value = json;
+    }
     /// <inheritdoc />
-    public void Delete() => Value = null;
-}
-
-/// <summary>Dedicated persistence DTO envelope.</summary>
-public sealed class SaveDto
-{
-    /// <summary>Save schema version.</summary>
-    public int SchemaVersion { get; set; } = 2;
-    /// <summary>Content hash used to generate the run.</summary>
-    public string ContentHash { get; set; } = string.Empty;
-    /// <summary>Run seed.</summary>
-    public int Seed { get; set; }
-    /// <summary>Depth and turn number.</summary>
-    public int Depth { get; set; }
-    /// <summary>Completed turns.</summary>
-    public int TurnNumber { get; set; }
-    /// <summary>Serialized RNG states.</summary>
-    public Dictionary<string, ulong> RandomStates { get; set; } = new();
-    /// <summary>Opaque versioned game payload.</summary>
-    public JsonElement Game { get; set; }
-    /// <summary>Checksum of all fields except this one.</summary>
-    public string Checksum { get; set; } = string.Empty;
-}
-
-/// <summary>Validates and serializes save envelopes.</summary>
-public static class SaveCodec
-{
-    /// <summary>Serializes an envelope with a checksum.</summary>
-    public static string Encode(SaveDto dto)
+    public void Delete()
     {
-        dto.Checksum = string.Empty;
-        string unsigned = JsonSerializer.Serialize(dto, Options);
-        dto.Checksum = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(unsigned))).ToLowerInvariant();
-        return JsonSerializer.Serialize(dto, Options);
+        Backup = Value;
+        Value = null;
     }
-    /// <summary>Decodes and verifies a save, including a trivial v1 migration.</summary>
-    public static SaveDto Decode(string json)
-    {
-        SaveDto dto;
-        try { dto = JsonSerializer.Deserialize<SaveDto>(json, Options) ?? throw new InvalidDataException("Save is empty."); }
-        catch (JsonException exception) { throw new InvalidDataException("Save JSON is corrupt or truncated.", exception); }
-        if (dto.SchemaVersion > 2) throw new InvalidDataException($"Save schemaVersion {dto.SchemaVersion} is newer than supported version 2.");
-        string expected = dto.Checksum;
-        dto.Checksum = string.Empty;
-        string unsigned = JsonSerializer.Serialize(dto, Options);
-        string actual = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(unsigned))).ToLowerInvariant();
-        if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("Save checksum mismatch.");
-        if (dto.SchemaVersion == 1) dto.SchemaVersion = 2;
-        dto.Checksum = expected;
-        return dto;
-    }
-    private static readonly JsonSerializerOptions Options = new() { WriteIndented = true };
 }

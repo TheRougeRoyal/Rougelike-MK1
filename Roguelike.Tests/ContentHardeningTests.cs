@@ -4,6 +4,8 @@ using Microsoft.Xna.Framework;
 using Roguelike.Content;
 using Xunit;
 
+#pragma warning disable CS8600, CS8602
+
 namespace Roguelike.Tests;
 
 public sealed class ContentHardeningTests
@@ -340,4 +342,39 @@ public sealed class ContentHardeningTests
             Assert.False(loaded, $"Fuzz iteration {i} unexpectedly loaded after mutating {mutatedField}.");
         }
     }
+
+    [Fact]
+    public void FuzzTest_AdditionalMutationsNameTheChangedField()
+    {
+        string unknownProperty = CreateTempContent((monsters, _, _) =>
+            monsters["monsters"]!.AsArray().First()!.AsObject()["unknownMonsterField"] = 1);
+        string effectType = CreateTempContent((_, items, _) =>
+            items["items"]!.AsArray().First()!.AsObject()["effects"]!.AsArray()[0]!.AsObject()["type"] = 7);
+        string truncated = CreateTempContent((_, _, _) => { });
+        File.WriteAllText(Path.Combine(truncated, "items.json"),
+            """{"schemaVersion":2,"items":[{"id":"healing_potion","effects":[{"type":""");
+
+        try
+        {
+            ContentLoadException unknown = Assert.Throws<ContentLoadException>(
+                () => ContentDatabase.LoadDirectory(unknownProperty));
+            Assert.Contains("unknownMonsterField", unknown.Message);
+
+            ContentLoadException changedType = Assert.Throws<ContentLoadException>(
+                () => ContentDatabase.LoadDirectory(effectType));
+            Assert.Contains("type", changedType.Message);
+
+            ContentLoadException invalidJson = Assert.Throws<ContentLoadException>(
+                () => ContentDatabase.LoadDirectory(truncated));
+            Assert.Contains("items.json", invalidJson.Message);
+        }
+        finally
+        {
+            Directory.Delete(unknownProperty, true);
+            Directory.Delete(effectType, true);
+            Directory.Delete(truncated, true);
+        }
+    }
 }
+
+#pragma warning restore CS8600, CS8602

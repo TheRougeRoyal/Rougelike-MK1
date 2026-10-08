@@ -190,6 +190,17 @@ public sealed class Dungeon
     /// <param name="origin">The player's current tile position.</param>
     public void UpdateFieldOfView(Point origin)
     {
+        UpdateFieldOfView(origin, true);
+    }
+
+    /// <summary>Recomputes visible tiles without changing the explored bitmap.</summary>
+    public void RecomputeVisible(Point origin)
+    {
+        UpdateFieldOfView(origin, false);
+    }
+
+    private void UpdateFieldOfView(Point origin, bool markExplored)
+    {
         Array.Clear(visible);
 
         int minX = Math.Max(0, origin.X - FovRadius);
@@ -212,7 +223,7 @@ public sealed class Dungeon
                 if (HasLineOfSight(origin, target))
                 {
                     visible[x, y] = true;
-                    explored[x, y] = true;
+                    if (markExplored) explored[x, y] = true;
                 }
             }
         }

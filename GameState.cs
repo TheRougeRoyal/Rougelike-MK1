@@ -41,6 +41,11 @@ public sealed class GameState
 
     /// <summary>Creates a new run.</summary>
     public GameState(int seed, int width = 60, int height = 34, int startingDepth = 1, ContentDatabase content = null!)
+        : this(seed, width, height, startingDepth, content, true)
+    {
+    }
+
+    private GameState(int seed, int width, int height, int startingDepth, ContentDatabase content, bool initialize)
     {
         if (width < 12 || height < 10) throw new ArgumentOutOfRangeException(nameof(width));
         if (startingDepth < 1) throw new ArgumentOutOfRangeException(nameof(startingDepth));
@@ -50,6 +55,7 @@ public sealed class GameState
         Width = width;
         Height = height;
         gameplayRandom = RandomStreams.Create(seed, 0, 0x47504C59UL);
+        if (!initialize) return;
         ResetRun();
         if (startingDepth > 1)
         {
@@ -102,6 +108,12 @@ public sealed class GameState
     internal IRandom GameplayRandom => gameplayRandom;
     /// <summary>Gets the serializable gameplay RNG state.</summary>
     public ulong GameplayRandomState => gameplayRandom.State;
+    /// <summary>Gets the deterministic level-generation stream state for this depth.</summary>
+    public ulong LevelRandomState => RandomStreams.Create(runSeed, Depth, 0x4C455645UL).State;
+    /// <summary>Gets the deterministic monster-placement stream state for this depth.</summary>
+    public ulong MonsterRandomState => RandomStreams.Create(runSeed, Depth, 0x4D4F4E53UL).State;
+    /// <summary>Gets the deterministic loot stream state for this depth.</summary>
+    public ulong LootRandomState => RandomStreams.Create(runSeed, Depth, 0x4C4F4F54UL).State;
     internal List<MonsterActor> MutableMonsters => monsters;
 
     internal void ResetRun()
@@ -166,13 +178,23 @@ public sealed class GameState
                 candidates.Add(point);
         }
         MonsterContent[] available = content.Monsters.Where(item => item.MinDepth <= Depth).ToArray();
-        int availableCount = available.Length;
         for (int i = 0; i < targetCount && candidates.Count > 0; i++)
         {
             int index = levelMonsterRandom.Next(candidates.Count);
             Point position = candidates[index];
             candidates.RemoveAt(index);
-            MonsterContent baseContent = available[levelMonsterRandom.Next(availableCount)];
+            int totalWeight = available.Sum(item => item.SpawnWeight);
+            int roll = levelMonsterRandom.Next(totalWeight);
+            MonsterContent baseContent = available[^1];
+            foreach (MonsterContent candidate in available)
+            {
+                if (roll < candidate.SpawnWeight)
+                {
+                    baseContent = candidate;
+                    break;
+                }
+                roll -= candidate.SpawnWeight;
+            }
             int scale = Math.Max(0, Depth - baseContent.MinDepth);
             MonsterDefinition definition = new(
                 baseContent.Id, baseContent.Name, baseContent.Glyph,
@@ -265,6 +287,46 @@ public sealed class GameState
     }
     internal void RestoreGameplayRandomState(ulong state) => gameplayRandom.State = state;
 
+    /// <summary>Restores a complete run without spawning new actors or consuming gameplay randomness.</summary>
+    public static GameState Restore(GameStateSnapshot snapshot, ContentDatabase content)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(content);
+        GameState state = new(snapshot.Seed, snapshot.Width, snapshot.Height, snapshot.Depth, content, false)
+        {
+            Dungeon = new Dungeon(snapshot.Width, snapshot.Height,
+                RandomStreams.Create(snapshot.Seed, snapshot.Depth, 0x4C455645UL))
+        };
+        state.Player = new PlayerActor(state.Dungeon.PlayerStart, content);
+        state.Depth = snapshot.Depth;
+        state.Player.Restore(snapshot.Player.Level, snapshot.Player.Experience, snapshot.Player.Hp,
+            snapshot.Player.MaxHp, snapshot.Player.Attack, snapshot.Player.Defense);
+        state.Player.Inventory.Items.Clear();
+        foreach (ItemInstance item in snapshot.Player.Inventory)
+            state.Player.Inventory.Items.Add(item);
+        state.Player.EquippedWeapon = snapshot.Player.EquippedWeapon;
+        state.Player.EquippedArmor = snapshot.Player.EquippedArmor;
+        state.Player.Effects.AddRange(snapshot.Player.Effects);
+        state.Player.Position = snapshot.PlayerPosition;
+        state.Dungeon.RestoreExplored(snapshot.ExploredTiles);
+        state.Dungeon.RecomputeVisible(snapshot.PlayerPosition);
+        state.monsters.AddRange(snapshot.Monsters);
+        state.floorItems.AddRange(snapshot.FloorItems);
+        state.TurnNumber = snapshot.TurnNumber;
+        state.Status = snapshot.Status;
+        state.RunStats.Restore(snapshot.Stats.TurnsSurvived, snapshot.Stats.MonstersSlain,
+            snapshot.Stats.ItemsPickedUp, snapshot.Stats.DamageDealt, snapshot.Stats.DamageTaken,
+            snapshot.Stats.MaxDepth, snapshot.Stats.CauseOfDeath);
+        state.MessageLog.Restore(snapshot.Messages);
+        state.gameplayRandom.State = snapshot.GameplayRandomState;
+        if (snapshot.Messages.LastOrDefault() is MessageLogEntry last)
+        {
+            state.Message = last.Text;
+            state.FeedbackTint = last.Color;
+        }
+        return state;
+    }
+
     internal void RestoreSnapshot(Dungeon dungeon, Point playerPosition, int turnNumber, GameStatus status,
         string explored, RunStatsSnapshot stats, IEnumerable<MessageLogEntry> messages)
     {
@@ -280,7 +342,7 @@ public sealed class GameState
         dungeon.RestoreExplored(explored);
     }
 
-    internal readonly record struct RunStatsSnapshot(int TurnsSurvived, int MonstersSlain, int ItemsPickedUp,
+    public readonly record struct RunStatsSnapshot(int TurnsSurvived, int MonstersSlain, int ItemsPickedUp,
         int DamageDealt, int DamageTaken, int MaxDepth, string? CauseOfDeath);
 
     internal void RestoreActors(IEnumerable<MonsterActor> restoredMonsters, IEnumerable<FloorItem> restoredItems)
@@ -343,6 +405,20 @@ public sealed class GameState
     {
         unchecked { return seed * 397 ^ depth * 7919; }
     }
+
+    /// <summary>In-memory state transferred from the persistence DTO layer to GameState.</summary>
+    public sealed record GameStateSnapshot(
+        int Seed, int Width, int Height, int Depth, int TurnNumber, GameStatus Status,
+        Point PlayerPosition, PlayerSnapshot Player, string ExploredTiles,
+        GameState.RunStatsSnapshot Stats, IReadOnlyList<MessageLogEntry> Messages,
+        IReadOnlyList<MonsterActor> Monsters, IReadOnlyList<FloorItem> FloorItems,
+        ulong GameplayRandomState);
+
+    /// <summary>Saved player values and owned item state.</summary>
+    public sealed record PlayerSnapshot(
+        int Level, int Experience, int Hp, int MaxHp, int Attack, int Defense,
+        IReadOnlyList<ItemInstance> Inventory, ItemInstance? EquippedWeapon,
+        ItemInstance? EquippedArmor, IReadOnlyList<StatusEffect> Effects);
     /// <summary>Derives the independent gameplay RNG seed for a run.</summary>
     public static int CreateGameplaySeed(int seed)
     {

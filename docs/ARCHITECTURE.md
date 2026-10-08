@@ -52,10 +52,18 @@ or item-specific code is required.
 
 ## Save format and durability
 
-`save.json` is a checksummed versioned envelope. The checksum is verified using
-the schema version that was written, then a supported older version is migrated.
-Writes go to a temporary write-through stream, call `Flush(true)`, preserve
-`save.json.bak`, and rename the temporary file into place. If the primary file is
-unreadable or fails checksum/JSON validation, the backup is attempted before the
-load error is reported. The save content hash prevents loading a run with
-different content.
+`save.json` is a checksummed version-2 DTO-only envelope. It stores all gameplay
+state needed for deterministic continuation, including every RNG stream state,
+the explored bitmap, run statistics, and the last 100 log entries. Dungeon walls
+are regenerated from run seed/depth. Feedback timers are excluded because they
+are presentation-only, the visible-tile mask is recomputed from the player
+position, and UI screen/overlay state belongs to `GameSession`, not the run.
+
+The checksum is verified using the schema version that was written, then a
+supported older version is migrated. Writes go to a temporary write-through
+stream, call `Flush(true)`, preserve `save.json.bak`, and rename the temporary
+file into place. If the primary file is unreadable or fails checksum/JSON
+validation, the backup is attempted before the load error is reported. The save
+content hash prevents loading a run with different content. Multiple instances
+sharing a directory use last-writer-wins semantics; a failed write leaves the
+previous primary save intact.
