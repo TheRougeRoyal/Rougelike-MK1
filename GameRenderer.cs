@@ -6,6 +6,7 @@ namespace Roguelike;
 /// <summary>Draws the map, glyph actors, HUD, message log, and text inventory overlay.</summary>
 public sealed class GameRenderer
 {
+    private const string ExperienceLabel = "XP";
     private readonly Texture2D pixel;
     private readonly SpriteBatch spriteBatch;
     private readonly int tileSize;
@@ -96,7 +97,8 @@ public sealed class GameRenderer
         int left = 8;
         text.DrawString($"HP {player.Hp}/{player.MaxHp}", new Point(left, top + 8), Color.White, 1, true);
         DrawBar(new Rectangle(left, top + 20, 150, 7), player.Hp, player.MaxHp, Color.Red);
-        text.DrawString($"XP {experience}/{player.ExperienceToNextLevel}", new Point(left, top + 31), Color.White);
+        text.DrawString($"{ExperienceLabel} {experience}/{player.ExperienceToNextLevel}",
+            new Point(left, top + 31), Color.White);
         DrawBar(new Rectangle(left, top + 43, 150, 7), experience, player.ExperienceToNextLevel, Color.CornflowerBlue);
         text.DrawString($"Level {level}  Depth {depth}", new Point(left, top + 55), Color.Gold);
         text.DrawString($"ATK {player.TotalAttack}  DEF {player.TotalDefense}", new Point(left, top + 67), Color.White);
