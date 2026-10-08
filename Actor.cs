@@ -84,9 +84,6 @@ public sealed class PlayerActor : Actor
     public override int TotalDefense => Defense + (EquippedArmor?.Definition.DefenseBonus ?? 0) +
         Effects.Where(effect => effect.Type == StatusEffectType.Defense).Sum(effect => effect.Magnitude);
 
-    /// <summary>Heals ten points, capped at maximum hit points.</summary>
-    public int Heal() => Heal(10);
-
     /// <summary>Heals up to the requested amount.</summary>
     public int Heal(int amount)
     {

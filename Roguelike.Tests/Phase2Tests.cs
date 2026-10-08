@@ -19,7 +19,7 @@ public sealed class Phase2Tests
 
 
         player.Hp = 10;
-        Assert.Equal(10, player.Heal());
+        Assert.Equal(10, player.Heal(10));
         player.AddExperience(20);
         Assert.Equal(2, player.Level);
         Assert.Equal(35, player.MaxHp);
@@ -38,7 +38,8 @@ public sealed class Phase2Tests
         PlayerActor player = new(Point.Zero, content);
         MonsterDefinition toughDefinition = new(
             "tough", "Tough", 'T', 20, 1, 10, 5,
-            MonsterBehavior.Chase, Color.Red, 1, 1);
+            MonsterBehavior.Chase, Color.Red, 1, 1,
+            new Dictionary<string, int> { ["alertTurns"] = 5 });
         MonsterActor firstMonster = new(toughDefinition, new Point(1, 0));
         MonsterActor secondMonster = new(toughDefinition, new Point(1, 0));
 
@@ -155,7 +156,7 @@ public sealed class Phase2Tests
         state.ConfigureLevel(dungeon, new Point(1, 1));
         ContentDatabase content = ContentDatabase.LoadDefault();
         MonsterContent archerContent = content.GetMonster("archer");
-        MonsterDefinition archerDef = new(archerContent.Id, archerContent.Name, archerContent.Glyph, archerContent.MaxHp, archerContent.Attack, archerContent.Defense, archerContent.SightRadius, archerContent.Behavior, archerContent.Color, archerContent.MinDepth, archerContent.Xp);
+        MonsterDefinition archerDef = new(archerContent.Id, archerContent.Name, archerContent.Glyph, archerContent.MaxHp, archerContent.Attack, archerContent.Defense, archerContent.SightRadius, archerContent.Behavior, archerContent.Color, archerContent.MinDepth, archerContent.Xp, archerContent.Params);
         MonsterActor archer = new(archerDef, new Point(4, 1));
         state.AddMonsterForScenario(archer);
         int playerHp = state.Player.Hp;
@@ -303,7 +304,8 @@ public sealed class Phase2Tests
 
     private static MonsterDefinition CreateDefinition(string name, int maxHp) =>
         new("goblin", name, 'm', maxHp, 1, 0, 8,
-            MonsterBehavior.Chase, Color.Red, 1, 1);
+            MonsterBehavior.Chase, Color.Red, 1, 1,
+            new Dictionary<string, int> { ["alertTurns"] = 5 });
 
     private static Point FindWalkableNeighbor(Dungeon dungeon, Point origin, Point? excluded)
     {

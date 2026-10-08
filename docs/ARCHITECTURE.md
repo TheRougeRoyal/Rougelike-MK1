@@ -29,8 +29,9 @@ Every content file has `schemaVersion: 2`.
 `monsters.json` contains `monsters[]` entries with `id`, `name`, printable `glyph`,
 `color`, `maxHp`, `attack`, `defense`, `xp`, `sightRadius`, `minDepth`,
 `spawnWeight`, `behavior`, and optional integer `params`. Parameters currently used
-by the turn manager include `minRange`, `maxRange`, `actEveryNTurns`, and
-`alertTurns`.
+by the turn manager include `alwaysChase`, `minRange`, `maxRange`,
+`actEveryNTurns`, and `alertTurns`; the loader requires behavior-specific
+parameters instead of supplying gameplay fallbacks.
 
 `items.json` contains `items[]` entries with `id`, `name`, `description`, printable
 `glyph`, `color`, `type` (`consumable`, `weapon`, or `armor`), `slot`,
@@ -40,9 +41,10 @@ Declarative effect types are `heal` (`amount`), `buff` (`stat`, `amount`, `turns
 effect registry; item ids are not special-cased by gameplay code.
 
 `balance.json` owns starting stats and loadout, spawn and loot counts, drop chance,
-XP curve, level-up bonuses, depth scaling, and the level-10 coverage rules. A
-custom directory passed with `--content <dir>` must provide all three files and
-replaces the embedded defaults before the game starts.
+stair healing percentage, feedback duration, minimum spawn distance, XP curve,
+level-up bonuses, depth scaling, and the level-10 coverage rules. A custom
+directory passed with `--content <dir>` must provide all three files and replaces
+the embedded defaults before the game starts.
 
 To add content, add a JSON entry with a unique id, satisfy validation, and include
 the id in `balance.json` only if it is part of the starting loadout. No C# catalog

@@ -157,6 +157,7 @@ public sealed class ContentDatabase
                 errors.Add($"{prefix}.behavior is unknown");
             if (item.Params is not null && item.Params.Values.Any(value => value < 0))
                 errors.Add($"{prefix}.params values must be >= 0");
+            ValidateMonsterParams(item, behavior, prefix, errors);
             if (errors.Count != before.Count) continue;
             TryColor(item.Color, out Color color);
             result[item.Id] = new MonsterContent(item.Id, item.Name, item.Glyph[0], color, item.MaxHp,
@@ -234,6 +235,12 @@ public sealed class ContentDatabase
             errors.Add($"{prefix}: $.lootMin/lootMax must define a non-negative range");
         if (file.DropChancePercent is < 0 or > 100)
             errors.Add($"{prefix}: $.dropChancePercent must be between 0 and 100");
+        if (file.StairHealPercent is < 0 or > 100)
+            errors.Add($"{prefix}: $.stairHealPercent must be between 0 and 100");
+        if (file.FeedbackDuration < 0)
+            errors.Add($"{prefix}: $.feedbackDuration must be >= 0");
+        if (file.MinSpawnDistance < 0)
+            errors.Add($"{prefix}: $.minSpawnDistance must be >= 0");
         if (file.XpPerLevel <= 0 ||         file.LevelMaxHpBonus < 0 || file.LevelAttackBonus < 0 || file.LevelDefenseEvery <= 0 ||
             file.LevelDefenseBonus < 0 || file.LevelHealAmount < 0)
             errors.Add($"{prefix}: level-up and XP values are invalid");
@@ -249,8 +256,35 @@ public sealed class ContentDatabase
             file.SpawnBase, file.SpawnPerDepth, file.LootMin, file.LootMax, file.DropChancePercent,
             file.XpPerLevel, file.LevelMaxHpBonus, file.LevelAttackBonus, file.LevelDefenseBonus,
             file.LevelDefenseEvery, file.LevelHealAmount, file.DepthHpScale, file.DepthAttackScale,
-            file.DepthDefenseScale,
+            file.DepthDefenseScale, file.StairHealPercent, file.FeedbackDuration, file.MinSpawnDistance,
             file.StartingLoadout ?? []);
+    }
+
+    private static void ValidateMonsterParams(MonsterJson item, MonsterBehavior behavior,
+        string prefix, List<string> errors)
+    {
+        IReadOnlyDictionary<string, int> parameters = item.Params ?? new Dictionary<string, int>();
+        if (behavior is MonsterBehavior.Chase or MonsterBehavior.Ranged or MonsterBehavior.Slow)
+            RequireParam(parameters, "alertTurns", prefix, errors);
+        if (behavior == MonsterBehavior.Ranged)
+        {
+            RequireParam(parameters, "minRange", prefix, errors);
+            RequireParam(parameters, "maxRange", prefix, errors);
+        }
+        if (behavior == MonsterBehavior.Slow)
+            RequireParam(parameters, "actEveryNTurns", prefix, errors);
+        if (parameters.TryGetValue("actEveryNTurns", out int actEvery) && actEvery <= 0)
+            errors.Add($"{prefix}.params.actEveryNTurns must be > 0");
+        if (parameters.TryGetValue("minRange", out int minRange) &&
+            parameters.TryGetValue("maxRange", out int maxRange) && minRange > maxRange)
+            errors.Add($"{prefix}.params.minRange must be <= maxRange");
+    }
+
+    private static void RequireParam(IReadOnlyDictionary<string, int> parameters, string name,
+        string prefix, List<string> errors)
+    {
+        if (!parameters.ContainsKey(name))
+            errors.Add($"{prefix}.params.{name} is required for this behavior");
     }
 
     private static void ValidateDepthCoverage(IEnumerable<MonsterContent> monsters,
@@ -302,7 +336,8 @@ public sealed record ItemContent(string Id, string Name, string Description, cha
 public sealed record BalanceContent(int StartingHp, int StartingAttack, int StartingDefense, int SpawnBase,
     int SpawnPerDepth, int LootMin, int LootMax, int DropChancePercent, int XpPerLevel,
     int LevelMaxHpBonus, int LevelAttackBonus, int LevelDefenseBonus, int LevelDefenseEvery, int LevelHealAmount,
-    int DepthHpScale, int DepthAttackScale, int DepthDefenseScale, IReadOnlyList<string> StartingLoadout);
+    int DepthHpScale, int DepthAttackScale, int DepthDefenseScale, int StairHealPercent,
+    int FeedbackDuration, int MinSpawnDistance, IReadOnlyList<string> StartingLoadout);
 
 public sealed record EffectJson(string Type, int Amount = 0, string? Stat = null, int Turns = 0,
     int MinDistance = 0);
@@ -314,6 +349,7 @@ internal sealed record BalanceFile(int SchemaVersion, int StartingHp = 30, int S
     int LootMax = 4, int DropChancePercent = 20, int XpPerLevel = 20, int LevelMaxHpBonus = 5,
     int LevelAttackBonus = 1, int LevelDefenseBonus = 1, int LevelDefenseEvery = 3, int LevelHealAmount = 10,
     int DepthHpScale = 2, int DepthAttackScale = 0, int DepthDefenseScale = 0,
+    int StairHealPercent = 25, int FeedbackDuration = 3, int MinSpawnDistance = 8,
     string[]? StartingLoadout = null);
 internal sealed record MonsterJson(string Id = "", string Name = "", string Glyph = "?",
     string Color = "#FFFFFF", int MaxHp = 0, int Attack = 0, int Defense = 0, int Xp = 0,

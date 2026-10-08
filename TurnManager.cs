@@ -4,11 +4,25 @@ using Roguelike.Content;
 
 namespace Roguelike;
 
+/// <summary>Applies one JSON item effect using the supplied deterministic random source.</summary>
+public interface IItemEffectHandler
+{
+    bool Apply(GameState state, EffectJson effect, IRandom random);
+}
+
 /// <summary>Executes the documented player, monster, FOV, cleanup turn order.</summary>
 public sealed class TurnManager
 {
     private readonly ContentDatabase content;
     private readonly Pathfinder pathfinder = new();
+    private static readonly IReadOnlyDictionary<string, IItemEffectHandler> EffectHandlers =
+        new Dictionary<string, IItemEffectHandler>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["heal"] = new HealEffectHandler(),
+            ["buff"] = new BuffEffectHandler(),
+            ["teleport"] = new TeleportEffectHandler(),
+            ["reveal_map"] = new RevealMapEffectHandler()
+        };
 
     public TurnManager(ContentDatabase content) => this.content = content ?? throw new ArgumentNullException(nameof(content));
 
@@ -126,49 +140,11 @@ public sealed class TurnManager
             state.SetFeedback("You are already at full health.", Microsoft.Xna.Framework.Color.Yellow);
             return false;
         }
-        EffectJson? teleport = itemContent.Effects.FirstOrDefault(effect => effect.Type.Equals("teleport", StringComparison.OrdinalIgnoreCase));
-        EffectJson? reveal = itemContent.Effects.FirstOrDefault(effect => effect.Type.Equals("reveal_map", StringComparison.OrdinalIgnoreCase));
-        EffectJson? heal = itemContent.Effects.FirstOrDefault(effect => effect.Type.Equals("heal", StringComparison.OrdinalIgnoreCase));
-        EffectJson? buff = itemContent.Effects.FirstOrDefault(effect => effect.Type.Equals("buff", StringComparison.OrdinalIgnoreCase));
-        if (teleport is not null)
+        foreach (EffectJson effect in itemContent.Effects)
         {
-            List<Point> candidates = new();
-            for (int y = 0; y < state.Dungeon.Height; y++)
-            for (int x = 0; x < state.Dungeon.Width; x++)
-            {
-                Point point = new(x, y);
-                if (state.Dungeon.IsWalkable(point) && point != state.Dungeon.StairsPosition &&
-                    Distance(point, state.Player.Position) >= teleport.MinDistance &&
-                    !state.IsOccupiedByPlayerOrMonster(point))
-                    candidates.Add(point);
-            }
-            if (candidates.Count == 0)
-            {
-                state.SetFeedback("There is nowhere safe to teleport.", Microsoft.Xna.Framework.Color.Yellow);
-                return false;
-            }
-            PrepareConsumedInventoryAction(state);
-            state.Player.Position = candidates[state.GameplayRandom.Next(candidates.Count)];
-            state.Dungeon.UpdateFieldOfView(state.Player.Position);
-        }
-        else if (reveal is not null)
-        {
-            PrepareConsumedInventoryAction(state);
-            state.Dungeon.RevealAll();
-        }
-        else if (heal is not null)
-        {
-            PrepareConsumedInventoryAction(state);
-            state.Player.Heal(heal.Amount);
-        }
-        else if (buff is not null)
-        {
-            PrepareConsumedInventoryAction(state);
-            StatusEffectType stat = buff.Stat?.Equals("defense", StringComparison.OrdinalIgnoreCase) == true
-                ? StatusEffectType.Defense : StatusEffectType.Strength;
-            StatusEffect? effect = state.Player.Effects.FirstOrDefault(item => item.Type == stat);
-            if (effect is null) state.Player.Effects.Add(new StatusEffect(stat, buff.Amount, buff.Turns));
-            else { effect.Magnitude = buff.Amount; effect.RemainingTurns = buff.Turns; }
+            if (!EffectHandlers.TryGetValue(effect.Type, out IItemEffectHandler? handler))
+                throw new InvalidOperationException($"No item effect handler registered for '{effect.Type}'.");
+            if (!handler.Apply(state, effect, state.GameplayRandom)) return false;
         }
         state.Player.Inventory.RemoveOne(slot);
         state.SetFeedback($"Used {definition.Name}.", Microsoft.Xna.Framework.Color.LimeGreen);
@@ -299,14 +275,13 @@ public sealed class TurnManager
             int distance = Distance(monster.Position, state.Player.Position);
             bool seesPlayer = distance <= monster.Definition.SightRadius &&
                               state.Dungeon.HasLineOfSight(monster.Position, state.Player.Position);
-            if (seesPlayer)
+            if (seesPlayer && monster.Definition.Behavior != MonsterBehavior.Idle)
             {
-                monster.AlertTurns = monster.Definition.Params.TryGetValue("alertTurns", out int alertTurns)
-                    ? alertTurns : 5;
+                monster.AlertTurns = RequiredParam(monster, "alertTurns");
                 monster.LastKnownPlayerPosition = state.Player.Position;
             }
-            int actEvery = monster.Definition.Params.TryGetValue("actEveryNTurns", out int configuredActEvery)
-                ? configuredActEvery : 1;
+            int actEvery = monster.Definition.Behavior == MonsterBehavior.Slow
+                ? RequiredParam(monster, "actEveryNTurns") : 1;
             if (actEvery > 1 && (state.TurnNumber - 1) % actEvery != 0)
             {
                 continue;
@@ -314,8 +289,8 @@ public sealed class TurnManager
 
             if (monster.Definition.Behavior == MonsterBehavior.Ranged &&
                 seesPlayer &&
-                distance >= monster.Definition.Params.GetValueOrDefault("minRange", 2) &&
-                distance <= monster.Definition.Params.GetValueOrDefault("maxRange", 5))
+                distance >= RequiredParam(monster, "minRange") &&
+                distance <= RequiredParam(monster, "maxRange"))
             {
                 CombatResult ranged = CombatResolver.Resolve(monster, state.Player, state.GameplayRandom);
                 state.RunStats.DamageTaken += ranged.Damage;
@@ -402,4 +377,74 @@ public sealed class TurnManager
     }
 
     private static int Distance(Point a, Point b) => Math.Abs(a.X - b.X) + Math.Abs(a.Y - b.Y);
+
+    private static int RequiredParam(MonsterActor monster, string name) =>
+        monster.Definition.Params.TryGetValue(name, out int value)
+            ? value
+            : throw new InvalidOperationException(
+                $"Monster '{monster.Definition.Id}' is missing required parameter '{name}'.");
+
+    private sealed class HealEffectHandler : IItemEffectHandler
+    {
+        public bool Apply(GameState state, EffectJson effect, IRandom random)
+        {
+            PrepareConsumedInventoryAction(state);
+            state.Player.Heal(effect.Amount);
+            return true;
+        }
+    }
+
+    private sealed class BuffEffectHandler : IItemEffectHandler
+    {
+        public bool Apply(GameState state, EffectJson effect, IRandom random)
+        {
+            PrepareConsumedInventoryAction(state);
+            StatusEffectType stat = effect.Stat?.Equals("defense", StringComparison.OrdinalIgnoreCase) == true
+                ? StatusEffectType.Defense : StatusEffectType.Strength;
+            StatusEffect? active = state.Player.Effects.FirstOrDefault(item => item.Type == stat);
+            if (active is null) state.Player.Effects.Add(new StatusEffect(stat, effect.Amount, effect.Turns));
+            else
+            {
+                active.Magnitude = effect.Amount;
+                active.RemainingTurns = effect.Turns;
+            }
+            return true;
+        }
+    }
+
+    private sealed class TeleportEffectHandler : IItemEffectHandler
+    {
+        public bool Apply(GameState state, EffectJson effect, IRandom random)
+        {
+            List<Point> candidates = new();
+            for (int y = 0; y < state.Dungeon.Height; y++)
+            for (int x = 0; x < state.Dungeon.Width; x++)
+            {
+                Point point = new(x, y);
+                if (state.Dungeon.IsWalkable(point) && point != state.Dungeon.StairsPosition &&
+                    Distance(point, state.Player.Position) >= effect.MinDistance &&
+                    !state.IsOccupiedByPlayerOrMonster(point))
+                    candidates.Add(point);
+            }
+            if (candidates.Count == 0)
+            {
+                state.SetFeedback("There is nowhere safe to teleport.", Microsoft.Xna.Framework.Color.Yellow);
+                return false;
+            }
+            PrepareConsumedInventoryAction(state);
+            state.Player.Position = candidates[random.Next(candidates.Count)];
+            state.Dungeon.UpdateFieldOfView(state.Player.Position);
+            return true;
+        }
+    }
+
+    private sealed class RevealMapEffectHandler : IItemEffectHandler
+    {
+        public bool Apply(GameState state, EffectJson effect, IRandom random)
+        {
+            PrepareConsumedInventoryAction(state);
+            state.Dungeon.RevealAll();
+            return true;
+        }
+    }
 }

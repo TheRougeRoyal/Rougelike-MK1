@@ -24,7 +24,7 @@ public sealed class Phase5ArchitectureTests
         ContentDatabase second = ContentDatabase.LoadDefault();
         Assert.Equal(first.ContentHash, second.ContentHash);
         Assert.Contains(first.Monsters, monster => monster.Id == "slime");
-        Assert.Contains(first.Items, item => item.Id == new ItemId("antidote"));
+        Assert.Contains(first.Items, item => item.Id == "minor_healing_potion");
     }
 
     [Fact]

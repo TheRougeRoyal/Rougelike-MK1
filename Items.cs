@@ -43,5 +43,3 @@ public sealed class FloorItem
     /// <summary>Gets the item stack.</summary>
     public ItemInstance Item { get; }
 }
-
-// ponytail: deleted ItemCatalog as it is now replaced by ContentDatabase.

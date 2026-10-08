@@ -64,7 +64,7 @@ public sealed class Phase4Tests
         {
             GameState state = new(seed, 20, 12, 1, ContentDatabase.LoadDefault());
             state.ConfigureLevel(CreateOpenDungeon(), new Point(1, 1));
-            ItemContent teleportContent = ContentDatabase.LoadDefault().GetItem(ItemId.ScrollOfTeleportation);
+            ItemContent teleportContent = ContentDatabase.LoadDefault().GetItem("scroll_of_teleportation");
             ItemDefinition teleport = new(teleportContent.Id, teleportContent.Name, teleportContent.Description, teleportContent.Type, teleportContent.Color, teleportContent.MinDepth, teleportContent.Weight, teleportContent.MaxStack, teleportContent.AttackBonus, teleportContent.DefenseBonus, teleportContent.Glyph);
             state.Player.Inventory.TryAdd(new ItemInstance(teleport));
             Assert.True(state.Process(GameAction.UseItem(1)));
@@ -145,7 +145,7 @@ public sealed class Phase4Tests
     public void RunStatsTrackCombatPickupDepthAndDeath()
     {
         GameState state = CreateOpenState();
-        MonsterDefinition definition = MonsterCatalog.Get(MonsterType.Rat) with { MaxHp = 1 };
+        MonsterDefinition definition = Monster(ContentDatabase.LoadDefault(), "rat") with { MaxHp = 1 };
         state.AddMonsterForScenario(new MonsterActor(definition, state.Player.Position + new Point(1, 0)));
         Assert.True(state.Process(GameAction.Move(new Point(1, 0))));
         Assert.Equal(1, state.RunStats.MonstersSlain);
@@ -153,7 +153,7 @@ public sealed class Phase4Tests
 
         state.Player.Position = new Point(1, 1);
         state.AddFloorItem(state.Player.Position + new Point(1, 0),
-            new ItemInstance(ItemCatalog.Get(ItemId.Dagger)));
+            new ItemInstance(ContentDatabase.LoadDefault().CreateDefinition("dagger")));
         Assert.True(state.Process(GameAction.Move(new Point(1, 0))));
         Assert.Equal(1, state.RunStats.ItemsPickedUp);
 
@@ -162,7 +162,7 @@ public sealed class Phase4Tests
         Assert.Equal(2, state.RunStats.MaxDepth);
 
         GameState death = CreateOpenState();
-        MonsterDefinition killer = MonsterCatalog.Get(MonsterType.Brute) with { Attack = 100, MaxHp = 100 };
+        MonsterDefinition killer = Monster(ContentDatabase.LoadDefault(), "brute") with { Attack = 100, MaxHp = 100 };
         death.AddMonsterForScenario(new MonsterActor(killer, death.Player.Position + new Point(1, 0)));
         Assert.True(death.Process(GameAction.Wait));
         Assert.Equal("Brute", death.RunStats.CauseOfDeath);
@@ -211,5 +211,13 @@ public sealed class Phase4Tests
         GameState state = new(1, 20, 12);
         state.ConfigureLevel(CreateOpenDungeon(), new Point(1, 1));
         return state;
+    }
+
+    private static MonsterDefinition Monster(ContentDatabase content, string id)
+    {
+        MonsterContent monster = content.GetMonster(id);
+        return new MonsterDefinition(monster.Id, monster.Name, monster.Glyph, monster.MaxHp, monster.Attack,
+            monster.Defense, monster.SightRadius, monster.Behavior, monster.Color, monster.MinDepth,
+            monster.Xp, monster.Params);
     }
 }

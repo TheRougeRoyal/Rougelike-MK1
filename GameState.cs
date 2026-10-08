@@ -133,7 +133,8 @@ public sealed class GameState
         else
         {
             Player.Position = Dungeon.PlayerStart;
-            Player.Heal((Player.MaxHp + 3) / 4);
+            int healAmount = (int)(((long)Player.MaxHp * content.Balance.StairHealPercent + 99) / 100);
+            Player.Heal(healAmount);
         }
         monsters.Clear();
         floorItems.Clear();
@@ -161,7 +162,7 @@ public sealed class GameState
             Point point = new(x, y);
             if (Dungeon.IsWalkable(point) && point != Dungeon.PlayerStart &&
                 point != Dungeon.StairsPosition && !Dungeon.StartRoom.Contains(point) &&
-                Distance(point, Dungeon.PlayerStart) >= 8)
+                Distance(point, Dungeon.PlayerStart) >= content.Balance.MinSpawnDistance)
                 candidates.Add(point);
         }
         MonsterContent[] available = content.Monsters.Where(item => item.MinDepth <= Depth).ToArray();
@@ -204,6 +205,8 @@ public sealed class GameState
         floorItems.Add(new FloorItem(point, item));
         return true;
     }
+    /// <summary>Places an item on an unoccupied walkable floor tile.</summary>
+    public bool TryPlaceFloorItem(Point point, ItemInstance item) => AddFloorItem(point, item);
     internal Point? FindNearestFreeTile(Point origin)
     {
         Queue<Point> queue = new();
@@ -231,7 +234,7 @@ public sealed class GameState
         Message = message;
         FeedbackTint = tint;
         FeedbackActor = actor;
-        FeedbackTurns = 3;
+        FeedbackTurns = content.Balance.FeedbackDuration;
         MessageLog.Add(message, tint, TurnNumber);
     }
     internal void CleanupDead()

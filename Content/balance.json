@@ -17,5 +17,8 @@
   "depthHpScale": 2,
   "depthAttackScale": 0,
   "depthDefenseScale": 0,
+  "stairHealPercent": 25,
+  "feedbackDuration": 3,
+  "minSpawnDistance": 8,
   "startingLoadout": ["healing_potion"]
 }

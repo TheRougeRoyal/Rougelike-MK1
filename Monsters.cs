@@ -2,8 +2,6 @@ using Microsoft.Xna.Framework;
 
 namespace Roguelike;
 
-// ponytail: MonsterType deleted as it is replaced by string IDs in ContentDatabase.
-
 /// <summary>Monster decision model.</summary>
 public enum MonsterBehavior { Idle, Chase, Ranged, Slow }
 
@@ -20,8 +18,6 @@ public sealed record MonsterDefinition(
     {
     }
 }
-
-// ponytail: deleted MonsterCatalog as it is now replaced by ContentDatabase.
 
 /// <summary>An enemy actor.</summary>
 public sealed class MonsterActor : Actor

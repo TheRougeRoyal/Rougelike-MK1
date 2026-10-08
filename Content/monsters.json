@@ -1,10 +1,10 @@
 {
   "schemaVersion": 2,
   "monsters": [
-    { "id": "rat", "name": "Rat", "glyph": "r", "color": "#D3D3D3", "maxHp": 6, "attack": 3, "defense": 0, "xp": 8, "sightRadius": 6, "minDepth": 1, "spawnWeight": 30, "behavior": "chase" },
-    { "id": "goblin", "name": "Goblin", "glyph": "g", "color": "#32CD32", "maxHp": 10, "attack": 4, "defense": 1, "xp": 12, "sightRadius": 7, "minDepth": 1, "spawnWeight": 24, "behavior": "chase" },
-    { "id": "archer", "name": "Archer", "glyph": "a", "color": "#6495ED", "maxHp": 8, "attack": 4, "defense": 2, "xp": 18, "sightRadius": 9, "minDepth": 2, "spawnWeight": 14, "behavior": "ranged", "params": { "minRange": 2, "maxRange": 5 } },
-    { "id": "brute", "name": "Brute", "glyph": "B", "color": "#FF4500", "maxHp": 24, "attack": 7, "defense": 3, "xp": 30, "sightRadius": 3, "minDepth": 3, "spawnWeight": 8, "behavior": "slow", "params": { "actEveryNTurns": 2 } },
+    { "id": "rat", "name": "Rat", "glyph": "r", "color": "#D3D3D3", "maxHp": 6, "attack": 3, "defense": 0, "xp": 8, "sightRadius": 6, "minDepth": 1, "spawnWeight": 30, "behavior": "chase", "params": { "alwaysChase": 1, "alertTurns": 5 } },
+    { "id": "goblin", "name": "Goblin", "glyph": "g", "color": "#32CD32", "maxHp": 10, "attack": 4, "defense": 1, "xp": 12, "sightRadius": 7, "minDepth": 1, "spawnWeight": 24, "behavior": "chase", "params": { "alertTurns": 5 } },
+    { "id": "archer", "name": "Archer", "glyph": "a", "color": "#6495ED", "maxHp": 8, "attack": 4, "defense": 2, "xp": 18, "sightRadius": 9, "minDepth": 2, "spawnWeight": 14, "behavior": "ranged", "params": { "alertTurns": 5, "minRange": 2, "maxRange": 5 } },
+    { "id": "brute", "name": "Brute", "glyph": "B", "color": "#FF4500", "maxHp": 24, "attack": 7, "defense": 3, "xp": 30, "sightRadius": 3, "minDepth": 3, "spawnWeight": 8, "behavior": "slow", "params": { "alertTurns": 5, "actEveryNTurns": 2 } },
     { "id": "slime", "name": "Slime", "glyph": "s", "color": "#7FFFD4", "maxHp": 12, "attack": 3, "defense": 1, "xp": 15, "sightRadius": 5, "minDepth": 1, "spawnWeight": 10, "behavior": "idle" }
   ]
 }
