@@ -14,13 +14,24 @@ public static class Program
     /// <param name="args">Optional first argument containing an integer seed.</param>
     public static void Main(string[] args)
     {
-        (int seed, string? contentDirectory, string saveDirectory) = ParseOptions(args);
-        ContentDatabase content = contentDirectory is null ? ContentDatabase.LoadDefault() : ContentDatabase.LoadDirectory(contentDirectory);
-        Console.WriteLine($"Using dungeon seed: {seed}");
-        Console.WriteLine($"Using gameplay seed: {GameState.CreateGameplaySeed(seed)}");
+        try
+        {
+            (int seed, string? contentDirectory, string saveDirectory) = ParseOptions(args);
+            ContentDatabase content = contentDirectory is null ? ContentDatabase.LoadDefault() : ContentDatabase.LoadDirectory(contentDirectory);
+            Console.WriteLine($"Using dungeon seed: {seed}");
+            Console.WriteLine($"Using gameplay seed: {GameState.CreateGameplaySeed(seed)}");
 
-        using GameMain game = new(seed, content, saveDirectory);
-        game.Run();
+            using GameMain game = new(seed, content, saveDirectory);
+            game.Run();
+        }
+        catch (ContentLoadException ex)
+        {
+            foreach (string error in ex.Message.Split(Environment.NewLine))
+            {
+                Console.Error.WriteLine(error);
+            }
+            Environment.Exit(1);
+        }
     }
 
     private static (int Seed, string? ContentDirectory, string SaveDirectory) ParseOptions(string[] args)

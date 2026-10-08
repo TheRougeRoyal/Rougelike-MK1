@@ -10,24 +10,23 @@ public sealed class ContentHardeningTests
 {
     private static string CreateTempContent(Action<JsonObject, JsonObject, JsonObject> mutate)
     {
-        // Find default content directory to copy from
         string source = FindContentDirectory();
         string target = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(target);
-        
+
         foreach (string name in new[] { "monsters.json", "items.json", "balance.json" })
             File.Copy(Path.Combine(source, name), Path.Combine(target, name));
 
         JsonObject monsters = JsonNode.Parse(File.ReadAllText(Path.Combine(target, "monsters.json")))!.AsObject();
         JsonObject items = JsonNode.Parse(File.ReadAllText(Path.Combine(target, "items.json")))!.AsObject();
         JsonObject balance = JsonNode.Parse(File.ReadAllText(Path.Combine(target, "balance.json")))!.AsObject();
-        
+
         mutate(monsters, items, balance);
-        
+
         File.WriteAllText(Path.Combine(target, "monsters.json"), monsters.ToJsonString());
         File.WriteAllText(Path.Combine(target, "items.json"), items.ToJsonString());
         File.WriteAllText(Path.Combine(target, "balance.json"), balance.ToJsonString());
-        
+
         return target;
     }
 
@@ -37,7 +36,7 @@ public sealed class ContentHardeningTests
         while (baseDir != null)
         {
             string candidate = Path.Combine(baseDir, "Content");
-            if (Directory.Exists(candidate) && File.Exists(Path.Combine(candidate, "balance.json"))) 
+            if (Directory.Exists(candidate) && File.Exists(Path.Combine(candidate, "balance.json")))
                 return candidate;
             baseDir = Directory.GetParent(baseDir)?.FullName;
         }
@@ -49,14 +48,9 @@ public sealed class ContentHardeningTests
     {
         string dir = CreateTempContent((monsters, items, balance) =>
         {
-            // 1. Bad glyph in monsters
             var m = monsters["monsters"]!.AsArray().First().AsObject();
             m["glyph"] = "TooLong";
-
-            // 2. Bad value in balance
             balance["stairHealPercent"] = 150;
-
-            // 3. Unknown effect type in items
             var i = items["items"]!.AsArray().First().AsObject();
             var effects = i["effects"]!.AsArray();
             effects[0].AsObject()["type"] = "magic_beam";
@@ -85,8 +79,8 @@ public sealed class ContentHardeningTests
         try
         {
             var ex = Assert.Throws<ContentLoadException>(() => ContentDatabase.LoadDirectory(dir));
-            Assert.Contains("monsters[0].id must not be empty", ex.Message);
-            Assert.Contains("monsters[1].id must not be empty", ex.Message);
+            Assert.Contains("monsters.json: monsters[0].id is required", ex.Message);
+            Assert.Contains("monsters.json: monsters[1].id is required", ex.Message);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -103,7 +97,7 @@ public sealed class ContentHardeningTests
         try
         {
             var ex = Assert.Throws<ContentLoadException>(() => ContentDatabase.LoadDirectory(dir));
-            Assert.Contains("name must not be empty", ex.Message);
+            Assert.Contains("name is required", ex.Message);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -114,7 +108,7 @@ public sealed class ContentHardeningTests
         string dir = CreateTempContent((monsters, _, _) =>
         {
             var m = monsters["monsters"]!.AsArray().First().AsObject();
-            m["maxHp"] = "a lot"; // String instead of int
+            m["maxHp"] = "a lot";
         });
 
         try
@@ -130,7 +124,7 @@ public sealed class ContentHardeningTests
     {
         string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, "monsters.json"), "{ \"monsters\": [ { \"id\": \"rat\" "); // Missing closing brackets
+        File.WriteAllText(Path.Combine(dir, "monsters.json"), "{ \"monsters\": [ { \"id\": \"rat\" ");
         File.WriteAllText(Path.Combine(dir, "items.json"), "{}");
         File.WriteAllText(Path.Combine(dir, "balance.json"), "{}");
 
@@ -170,7 +164,8 @@ public sealed class ContentHardeningTests
 
         try
         {
-            Assert.Throws<ContentLoadException>(() => ContentDatabase.LoadDirectory(dir));
+            var ex = Assert.Throws<ContentLoadException>(() => ContentDatabase.LoadDirectory(dir));
+            Assert.Contains("startingHp is required", ex.Message);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -193,6 +188,82 @@ public sealed class ContentHardeningTests
     }
 
     [Fact]
+    public void RejectsUnknownProperties()
+    {
+        string dir = CreateTempContent((monsters, _, balance) =>
+        {
+            var m = monsters["monsters"]!.AsArray().First().AsObject();
+            m["spawnWieght"] = 10;
+            balance["extraField"] = 1;
+        });
+
+        try
+        {
+            var ex = Assert.Throws<ContentLoadException>(() => ContentDatabase.LoadDirectory(dir));
+            Assert.Contains("unknown property 'spawnWieght'", ex.Message);
+            Assert.Contains("unknown property 'extraField'", ex.Message);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void RejectsUnknownParamsKeys()
+    {
+        string dir = CreateTempContent((monsters, _, _) =>
+        {
+            var m = monsters["monsters"]!.AsArray().First().AsObject();
+            m["behavior"] = "ranged";
+            var p = m["params"]!.AsObject();
+            p["minRang"] = 1;
+        });
+
+        try
+        {
+            var ex = Assert.Throws<ContentLoadException>(() => ContentDatabase.LoadDirectory(dir));
+            Assert.Contains("unknown property 'minRang'", ex.Message);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void RejectsRevealMapWithParams()
+    {
+        string dir = CreateTempContent((_, items, _) =>
+        {
+            var i = items["items"]!.AsArray().First().AsObject();
+            var effects = i["effects"]!.AsArray();
+            var effect = effects[0].AsObject();
+            effect["type"] = "reveal_map";
+            effect["amount"] = 10;
+        });
+
+        try
+        {
+            var ex = Assert.Throws<ContentLoadException>(() => ContentDatabase.LoadDirectory(dir));
+            Assert.Contains("reveal_map takes no parameters", ex.Message);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
+    public void RejectsStartingLoadoutWithInvalidDepth()
+    {
+        string dir = CreateTempContent((_, items, balance) =>
+        {
+            var i = items["items"]!.AsArray().First().AsObject();
+            i["minDepth"] = 2;
+            balance["startingLoadout"] = new[] { i["id"]!.GetValue<string>() };
+        });
+
+        try
+        {
+            var ex = Assert.Throws<ContentLoadException>(() => ContentDatabase.LoadDirectory(dir));
+            Assert.Contains("must have minDepth 1", ex.Message);
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public void FuzzTest_NoRawExceptions()
     {
         Random rng = new(42);
@@ -200,23 +271,22 @@ public sealed class ContentHardeningTests
         {
             string dir = CreateTempContent((monsters, items, balance) =>
             {
-                // Random mutation
                 int choice = rng.Next(3);
-                if (choice == 0) // Corrupt monster
+                if (choice == 0)
                 {
                     var array = monsters["monsters"]!.AsArray();
                     var item = array[rng.Next(array.Count)].AsObject();
                     if (rng.Next(2) == 0) item.Remove("id");
                     else item["maxHp"] = "garbage";
                 }
-                else if (choice == 1) // Corrupt item
+                else if (choice == 1)
                 {
                     var array = items["items"]!.AsArray();
                     var item = array[rng.Next(array.Count)].AsObject();
                     if (rng.Next(2) == 0) item.Remove("glyph");
                     else item["weight"] = -1;
                 }
-                else // Corrupt balance
+                else
                 {
                     balance.Remove("startingHp");
                 }
@@ -224,7 +294,6 @@ public sealed class ContentHardeningTests
 
             try
             {
-                // We don't care if it succeeds or fails, just that it doesn't throw a raw exception
                 ContentDatabase.LoadDirectory(dir);
             }
             catch (ContentLoadException) { }
@@ -236,3 +305,4 @@ public sealed class ContentHardeningTests
         }
     }
 }
+EOF
