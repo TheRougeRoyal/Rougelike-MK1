@@ -135,8 +135,8 @@ public sealed class Phase2Tests
         MonsterDefinition secondDefinition = CreateDefinition("Second", 1);
         MonsterActor first = new(firstDefinition, firstPosition);
         MonsterActor second = new(secondDefinition, secondPosition);
-        state.AddMonsterForScenario(first);
-        state.AddMonsterForScenario(second);
+        GameStateTestHooks.AddMonster(state, first);
+        GameStateTestHooks.AddMonster(state, second);
         int playerHp = state.Player.Hp;
 
 
@@ -158,7 +158,7 @@ public sealed class Phase2Tests
         MonsterContent archerContent = content.GetMonster("archer");
         MonsterDefinition archerDef = new(archerContent.Id, archerContent.Name, archerContent.Glyph, archerContent.MaxHp, archerContent.Attack, archerContent.Defense, archerContent.SightRadius, archerContent.Behavior, archerContent.Color, archerContent.MinDepth, archerContent.Xp, archerContent.Params);
         MonsterActor archer = new(archerDef, new Point(4, 1));
-        state.AddMonsterForScenario(archer);
+        GameStateTestHooks.AddMonster(state, archer);
         int playerHp = state.Player.Hp;
 
 
@@ -176,7 +176,7 @@ public sealed class Phase2Tests
         Point playerPosition = state.Player.Position;
         Point monsterPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, null);
         MonsterDefinition definition = CreateDefinition("Veteran", 1) with { XpValue = 20 };
-        state.AddMonsterForScenario(new MonsterActor(definition, monsterPosition));
+        GameStateTestHooks.AddMonster(state, new MonsterActor(definition, monsterPosition));
 
 
         Assert.True(state.Process(ActionFor(playerPosition, monsterPosition)));

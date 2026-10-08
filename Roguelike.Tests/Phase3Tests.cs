@@ -167,7 +167,7 @@ public sealed class Phase3Tests
         state.Player.Inventory.TryAdd(new ItemInstance(ContentDatabase.LoadDefault().CreateDefinition("dagger")));
         MonsterActor monster = new(Monster(ContentDatabase.LoadDefault(), "rat"),
             state.Player.Position + new Point(0, -1));
-        state.AddMonsterForScenario(monster);
+        GameStateTestHooks.AddMonster(state, monster);
         int monsterHp = monster.Hp;
         Point origin = state.Player.Position;
 
@@ -252,10 +252,10 @@ public sealed class Phase3Tests
         MonsterActor monster = new(Monster(ContentDatabase.LoadDefault(), "rat"),
             state.Player.Position + new Point(2, 0));
         monster.Hp = 0;
-        state.AddMonsterForScenario(monster);
+        GameStateTestHooks.AddMonster(state, monster);
         state.SetGameplayRandom(new ZeroRandom());
 
-        state.DropLootForScenario(monster);
+        GameStateTestHooks.DropLoot(state, monster);
 
         Assert.Contains(state.FloorItems, item => item.Item.Definition.MinDepth <= state.Depth);
     }

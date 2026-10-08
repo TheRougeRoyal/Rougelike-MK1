@@ -46,7 +46,18 @@ public sealed class FileSaveStore : ISaveStore
                 writer.Flush();
                 stream.Flush(true);
             }
-            if (File.Exists(path)) File.Copy(path, backup, true);
+            if (File.Exists(path))
+            {
+                try
+                {
+                    SaveCodec.Decode(File.ReadAllText(path));
+                    File.Copy(path, backup, true);
+                }
+                catch (InvalidDataException)
+                {
+                    // Preserve the last known-good backup when the current save is corrupt.
+                }
+            }
             File.Move(temp, path, true);
         }
         finally
@@ -79,7 +90,18 @@ public sealed class MemorySaveStore : ISaveStore
     /// <inheritdoc />
     public void Write(string json)
     {
-        Backup = Value;
+        if (Value is not null)
+        {
+            try
+            {
+                SaveCodec.Decode(Value);
+                Backup = Value;
+            }
+            catch (InvalidDataException)
+            {
+                // Preserve the last known-good backup when the current save is corrupt.
+            }
+        }
         Value = json;
     }
     /// <inheritdoc />

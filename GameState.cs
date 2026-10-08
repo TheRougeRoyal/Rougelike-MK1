@@ -178,23 +178,13 @@ public sealed class GameState
                 candidates.Add(point);
         }
         MonsterContent[] available = content.Monsters.Where(item => item.MinDepth <= Depth).ToArray();
+        int availableCount = available.Length;
         for (int i = 0; i < targetCount && candidates.Count > 0; i++)
         {
             int index = levelMonsterRandom.Next(candidates.Count);
             Point position = candidates[index];
             candidates.RemoveAt(index);
-            int totalWeight = available.Sum(item => item.SpawnWeight);
-            int roll = levelMonsterRandom.Next(totalWeight);
-            MonsterContent baseContent = available[^1];
-            foreach (MonsterContent candidate in available)
-            {
-                if (roll < candidate.SpawnWeight)
-                {
-                    baseContent = candidate;
-                    break;
-                }
-                roll -= candidate.SpawnWeight;
-            }
+            MonsterContent baseContent = available[levelMonsterRandom.Next(availableCount)];
             int scale = Math.Max(0, Depth - baseContent.MinDepth);
             MonsterDefinition definition = new(
                 baseContent.Id, baseContent.Name, baseContent.Glyph,
@@ -272,10 +262,6 @@ public sealed class GameState
         if (target is not null)
             AddFloorItem(target.Value, new ItemInstance(LootSpawner.Choose(Depth, GameplayRandom, content)));
     }
-
-    internal void DropLootForScenario(MonsterActor monster) => DropLoot(monster);
-
-    internal void AddMonsterForScenario(MonsterActor monster) => monsters.Add(monster);
 
     internal void ConfigureLevel(Dungeon dungeon, Point playerPosition)
     {

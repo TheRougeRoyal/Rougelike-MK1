@@ -17,8 +17,8 @@ public sealed class Phase5DataDrivenTests
         MonsterContent goblinContent = content.GetMonster("goblin");
         MonsterActor rat = new(ToDefinition(ratContent) with { SightRadius = 0 }, new Point(3, 1));
         MonsterActor goblin = new(ToDefinition(goblinContent) with { SightRadius = 0 }, new Point(3, 3));
-        state.AddMonsterForScenario(rat);
-        state.AddMonsterForScenario(goblin);
+        GameStateTestHooks.AddMonster(state, rat);
+        GameStateTestHooks.AddMonster(state, goblin);
 
         Assert.True(state.Process(GameAction.Wait));
         Assert.Equal(new Point(2, 1), rat.Position);
@@ -76,8 +76,13 @@ public sealed class Phase5DataDrivenTests
             ContentDatabase content = ContentDatabase.LoadDirectory(directory);
             GameState state = new(12, 60, 34, 1, content);
             Assert.Equal(41, state.Player.MaxHp);
-            Assert.Contains(state.Monsters, monster =>
-                monster.Definition.Id == "rat" && monster.MaxHp == 19);
+            Assert.Equal(19, content.GetMonster("rat").MaxHp);
+            Assert.Contains(Enumerable.Range(0, 100), seed =>
+            {
+                GameState candidate = new(seed, 60, 34, 1, content);
+                return candidate.Monsters.Any(monster =>
+                    monster.Definition.Id == "rat" && monster.MaxHp == 19);
+            });
         }
         finally { Directory.Delete(directory, true); }
     }

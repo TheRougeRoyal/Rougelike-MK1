@@ -79,6 +79,32 @@ public sealed class PersistenceTests
     }
 
     [Fact]
+    public void CorruptPrimaryDoesNotReplaceExistingBackupOnNextSave()
+    {
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        string directory = Directory.CreateTempSubdirectory("roguelike-save-").FullName;
+        try
+        {
+            FileSaveStore store = new(directory);
+            GameStatePersistence.Save(new GameState(1, content: content), store, content.ContentHash);
+            GameStatePersistence.Save(new GameState(2, content: content), store, content.ContentHash);
+            File.WriteAllText(Path.Combine(directory, "save.json"), "{ corrupt");
+            GameStatePersistence.Save(new GameState(3, content: content), store, content.ContentHash);
+
+            string backup = File.ReadAllText(Path.Combine(directory, "save.json.bak"));
+            SaveFileDto backupDto = SaveCodec.Decode(backup);
+            Assert.Equal(1, backupDto.RunSeed);
+
+            File.WriteAllText(Path.Combine(directory, "save.json"), "{ corrupt");
+            LoadResult result = GameStatePersistence.Load(store, content.ContentHash, content);
+            Assert.True(result.IsSuccess, result.Reason);
+            Assert.True(result.UsedBackup);
+            Assert.Equal(1, result.State!.Seed);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public void FailureReasonsCoverMissingChecksumNewerAndContentMismatch()
     {
         ContentDatabase content = ContentDatabase.LoadDefault();
@@ -156,7 +182,8 @@ public sealed class PersistenceTests
             monsterContent.MaxHp, monsterContent.Attack, monsterContent.Defense, monsterContent.SightRadius,
             monsterContent.Behavior, monsterContent.Color, monsterContent.MinDepth, monsterContent.Xp,
             monsterContent.Params);
-        state.AddMonsterForScenario(new MonsterActor(definition, state.Player.Position + new Point(1, 0)));
+        GameStateTestHooks.AddMonster(state,
+            new MonsterActor(definition, state.Player.Position + new Point(1, 0)));
         state.Player.Inventory.TryAdd(new ItemInstance(content.CreateDefinition("dagger")));
         state.Player.Inventory.TryAdd(new ItemInstance(content.CreateDefinition("leather_armor")));
         state.Player.EquippedWeapon = new ItemInstance(content.CreateDefinition("dagger"));
@@ -200,51 +227,70 @@ public sealed class PersistenceTests
     {
         ContentDatabase content = ContentDatabase.LoadDefault();
         int reachedDepthTwo = 0;
+        int savesWithLivingMonsters = 0;
         for (int seed = 0; seed < 100; seed++)
         {
             GameState uninterrupted = new(seed, 20, 12, 1, content);
-            uninterrupted.MutableMonsters.Clear();
             GameState resumed = new(seed, 20, 12, 1, content);
-            resumed.MutableMonsters.Clear();
-            Pathfinder pathfinder = new();
-            IReadOnlyList<Point> path = pathfinder.FindPath(uninterrupted.Dungeon,
-                uninterrupted.Player.Position, uninterrupted.Dungeon.StairsPosition);
-            for (int actionIndex = 0; actionIndex < Math.Min(12, path.Count); actionIndex++)
+            Pcg32 walkerRandom = RandomStreams.Create(seed, 0, 0x57414C4BUL);
+            for (int actionIndex = 0; actionIndex < 60; actionIndex++)
             {
-                Point direction = path[actionIndex] - uninterrupted.Player.Position;
-                GameAction action = actionIndex % 7 == 0
-                    ? GameAction.UseItem(0)
-                    : actionIndex % 5 == 0 ? GameAction.Wait : GameAction.Move(direction);
+                GameAction action = ChooseWalkerAction(uninterrupted, walkerRandom);
                 uninterrupted.Process(action);
                 resumed.Process(action);
+                Assert.True(uninterrupted.StateHash == resumed.StateHash,
+                    $"Seed {seed} diverged during warm-up at depth {uninterrupted.Depth}, action {actionIndex}.");
             }
-            if (seed % 4 == 0)
-            {
-                uninterrupted.Player.Position = uninterrupted.Dungeon.StairsPosition;
-                resumed.Player.Position = resumed.Dungeon.StairsPosition;
-                uninterrupted.Process(GameAction.Wait);
-                resumed.Process(GameAction.Wait);
-            }
-            if (uninterrupted.Depth >= 2) reachedDepthTwo++;
-
             MemorySaveStore store = new();
             GameStatePersistence.Save(uninterrupted, store, content.ContentHash);
+            if (uninterrupted.Monsters.Any(monster => monster.IsAlive)) savesWithLivingMonsters++;
+            if (uninterrupted.Depth >= 2) reachedDepthTwo++;
             resumed = GameStatePersistence.Load(store, content.ContentHash, content);
-            for (int actionIndex = 0; actionIndex < 8; actionIndex++)
+            for (int actionIndex = 0; actionIndex < 60; actionIndex++)
             {
-                GameAction action = actionIndex % 7 == 0
-                    ? GameAction.UseItem(0)
-                    : actionIndex % 3 == 0
-                        ? GameAction.Wait
-                        : GameAction.Move(new Point(actionIndex % 2 == 0 ? 1 : -1, 0));
+                GameAction action = ChooseWalkerAction(uninterrupted, walkerRandom);
                 uninterrupted.Process(action);
                 resumed.Process(action);
                 Assert.True(uninterrupted.StateHash == resumed.StateHash,
                     $"Seed {seed} failed at depth {uninterrupted.Depth}, action {actionIndex}.");
             }
         }
-        Assert.True(reachedDepthTwo > 0, "No continuation run reached depth 2.");
+        Assert.True(reachedDepthTwo >= 20,
+            $"Only {reachedDepthTwo} of 100 runs reached depth 2 or deeper.");
+        Assert.True(savesWithLivingMonsters >= 10,
+            $"Only {savesWithLivingMonsters} of 100 saves contained living monsters.");
     }
+
+    private static GameAction ChooseWalkerAction(GameState state, IRandom random)
+    {
+        if (random.Next(100) < 20)
+        {
+            if (random.Next(2) == 0) return GameAction.Wait;
+            int[] consumableSlots = state.Player.Inventory.Items
+                .Select((item, index) => (item, index))
+                .Where(value => value.item.Definition.Type == ItemType.Consumable)
+                .Select(value => value.index)
+                .ToArray();
+            return consumableSlots.Length == 0
+                ? GameAction.Wait
+                : GameAction.UseItem(consumableSlots[random.Next(consumableSlots.Length)]);
+        }
+
+        Point target = state.FloorItems
+            .OrderBy(item => Manhattan(item.Position, state.Player.Position))
+            .Select(item => item.Position)
+            .Append(state.Dungeon.StairsPosition)
+            .OrderBy(point => Manhattan(point, state.Player.Position))
+            .FirstOrDefault();
+        IReadOnlyList<Point> path = new Pathfinder().FindPath(state.Dungeon, state.Player.Position, target,
+            point => state.IsOccupied(point));
+        return path.Count == 0
+            ? GameAction.Wait
+            : GameAction.Move(path[0] - state.Player.Position);
+    }
+
+    private static int Manhattan(Point first, Point second) =>
+        Math.Abs(first.X - second.X) + Math.Abs(first.Y - second.Y);
 
     private static string CreateV1(SaveFileDto dto)
     {
