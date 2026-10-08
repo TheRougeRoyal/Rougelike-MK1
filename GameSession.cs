@@ -37,7 +37,8 @@ public sealed class GameSession
     {
         get
         {
-            return GameStatePersistence.Load(saveStore, content.ContentHash, content).IsSuccess;
+            LoadResult result = GameStatePersistence.Load(saveStore, content.ContentHash, content);
+            return result.State is { Status: GameStatus.Playing };
         }
     }
 
@@ -60,20 +61,21 @@ public sealed class GameSession
                 if (Screens.Screen == ScreenKind.Title) StartNewRun(State.Seed);
                 break;
             case UiCommandKind.Continue:
-                if (Screens.Screen == ScreenKind.Title && HasValidSave)
+                if (Screens.Screen == ScreenKind.Title)
                 {
                     LoadResult result = GameStatePersistence.Load(saveStore, content.ContentHash, content);
                     if (result.State is not null)
                     {
                         if (result.State.Status == GameStatus.Dead)
                         {
-                            saveStore.Delete();
-                            State.SetFeedback("Save is from a finished run and was removed.",
-                                Microsoft.Xna.Framework.Color.Yellow);
+                            if (TryDeleteSave())
+                                State.SetFeedback("Save is from a finished run and was removed.",
+                                    Microsoft.Xna.Framework.Color.Yellow);
                         }
                         else
                         {
                             State = result.State;
+                            historyRecorded = false;
                             Screens.Start();
                         }
                     }
@@ -93,18 +95,22 @@ public sealed class GameSession
             case UiCommandKind.AbandonRun:
                 if (Screens.Overlay == UiOverlay.AbandonConfirmation)
                 {
-                    RecordHistory("retired");
-                    saveStore.Delete();
-                    Screens.ConfirmAbandon();
+                    if (TryDeleteSave())
+                    {
+                        RecordHistory("retired");
+                        Screens.ConfirmAbandon();
+                    }
                 }
                 else Screens.RequestAbandon();
                 break;
             case UiCommandKind.ConfirmAbandon:
                 if (Screens.Overlay == UiOverlay.AbandonConfirmation)
                 {
-                    RecordHistory("retired");
-                    saveStore.Delete();
-                    Screens.ConfirmAbandon();
+                    if (TryDeleteSave())
+                    {
+                        RecordHistory("retired");
+                        Screens.ConfirmAbandon();
+                    }
                 }
                 break;
             case UiCommandKind.CancelAbandon:
@@ -234,7 +240,7 @@ public sealed class GameSession
     private void FinalizeDeath(bool wasDead, UiCommandKind commandKind)
     {
         if (State.Status != GameStatus.Dead) return;
-        saveStore.Delete();
+        TryDeleteSave();
         RecordHistory("dead");
         if (Screens.Screen == ScreenKind.Playing)
         {
@@ -244,6 +250,21 @@ public sealed class GameSession
         if (wasDead && commandKind == UiCommandKind.Cancel && Screens.Screen == ScreenKind.GameOver)
         {
             Screens.Title();
+        }
+    }
+
+    private bool TryDeleteSave()
+    {
+        try
+        {
+            saveStore.Delete();
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            State.SetFeedback($"Could not delete save: {exception.Message}",
+                Microsoft.Xna.Framework.Color.Yellow);
+            return false;
         }
     }
 }
