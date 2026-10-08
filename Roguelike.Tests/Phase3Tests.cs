@@ -46,7 +46,7 @@ public sealed class Phase3Tests
     {
         ContentDatabase content = ContentDatabase.LoadDefault();
         GameState state = new(5, 12, 10, 1, content);
-        GameStateTestHooks.ClearMonsters(state);
+        state = GameStateTestHooks.ClearMonsters(state);
         ItemContent daggerContent = content.GetItem("dagger");
         ItemDefinition dagger = new(daggerContent.Id, daggerContent.Name, daggerContent.Description, daggerContent.Type, daggerContent.Color, daggerContent.MinDepth, daggerContent.Weight, daggerContent.MaxStack, daggerContent.AttackBonus, daggerContent.DefenseBonus, daggerContent.Glyph);
         state.Player.Inventory.TryAdd(new ItemInstance(dagger));
@@ -167,7 +167,7 @@ public sealed class Phase3Tests
         state.Player.Inventory.TryAdd(new ItemInstance(ContentDatabase.LoadDefault().CreateDefinition("dagger")));
         MonsterActor monster = new(Monster(ContentDatabase.LoadDefault(), "rat"),
             state.Player.Position + new Point(0, -1));
-        GameStateTestHooks.AddMonster(state, monster);
+        state = GameStateTestHooks.AddMonster(state, monster);
         int monsterHp = monster.Hp;
         Point origin = state.Player.Position;
 
@@ -252,7 +252,7 @@ public sealed class Phase3Tests
         MonsterActor monster = new(Monster(ContentDatabase.LoadDefault(), "rat"),
             state.Player.Position + new Point(2, 0));
         monster.Hp = 0;
-        GameStateTestHooks.AddMonster(state, monster);
+        state = GameStateTestHooks.AddMonster(state, monster);
         state.SetGameplayRandom(new ZeroRandom());
 
         GameStateTestHooks.DropLoot(state, monster);
@@ -265,8 +265,8 @@ public sealed class Phase3Tests
     {
         GameState first = CreateOpenState(101);
         GameState second = CreateOpenState(101);
-        GameStateTestHooks.ClearMonsters(first);
-        GameStateTestHooks.ClearMonsters(second);
+        first = GameStateTestHooks.ClearMonsters(first);
+        second = GameStateTestHooks.ClearMonsters(second);
         first.Process(GameAction.Wait);
         first.ConsumeGameplayRandom(17);
         second.Process(GameAction.Wait);
@@ -284,7 +284,7 @@ public sealed class Phase3Tests
     public void MappingAndTeleportationAreHeadlessActions()
     {
         GameState state = new(8, 20, 12);
-        GameStateTestHooks.ClearMonsters(state);
+        state = GameStateTestHooks.ClearMonsters(state);
         TileType[,] map = new TileType[20, 12];
         for (int y = 0; y < 12; y++)
         for (int x = 0; x < 20; x++)

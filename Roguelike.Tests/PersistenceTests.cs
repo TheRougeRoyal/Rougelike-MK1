@@ -113,15 +113,42 @@ public sealed class PersistenceTests
         {
             FileSaveStore store = new(directory);
             GameStatePersistence.Save(new GameState(1, content: content), store, content.ContentHash);
+            GameStatePersistence.Save(new GameState(2, content: content), store, content.ContentHash);
+            SaveFileDto backupDto = SaveCodec.Decode(
+                File.ReadAllText(Path.Combine(directory, "save.json.bak")));
+            Assert.Equal(1, backupDto.RunSeed);
+
             string path = Path.Combine(directory, "save.json");
+            bool savedWhileLocked = false;
+            Exception? lockFailure = null;
             using (FileStream lockStream = new(path, FileMode.Open, FileAccess.Read, FileShare.None))
             {
-                GameStatePersistence.Save(new GameState(2, content: content), store, content.ContentHash);
+                try
+                {
+                    GameStatePersistence.Save(new GameState(3, content: content), store, content.ContentHash);
+                    savedWhileLocked = true;
+                }
+                catch (Exception exception) when (OperatingSystem.IsWindows() && exception is IOException)
+                {
+                    lockFailure = exception;
+                }
             }
 
-            LoadResult result = GameStatePersistence.Load(store, content.ContentHash, content);
-            Assert.True(result.IsSuccess, result.Reason);
-            Assert.Equal(2, result.State!.Seed);
+            SaveFileDto backupAfterAttempt = SaveCodec.Decode(
+                File.ReadAllText(Path.Combine(directory, "save.json.bak")));
+            Assert.Equal(1, backupAfterAttempt.RunSeed);
+            if (OperatingSystem.IsWindows())
+            {
+                Assert.True(savedWhileLocked || lockFailure is not null,
+                    "The locked-save outcome was neither a successful write nor a reported IOException.");
+            }
+            else
+            {
+                Assert.True(savedWhileLocked);
+                LoadResult result = GameStatePersistence.Load(store, content.ContentHash, content);
+                Assert.True(result.IsSuccess, result.Reason);
+                Assert.Equal(3, result.State!.Seed);
+            }
         }
         finally { Directory.Delete(directory, true); }
     }
@@ -204,7 +231,7 @@ public sealed class PersistenceTests
             monsterContent.MaxHp, monsterContent.Attack, monsterContent.Defense, monsterContent.SightRadius,
             monsterContent.Behavior, monsterContent.Color, monsterContent.MinDepth, monsterContent.Xp,
             monsterContent.Params);
-        GameStateTestHooks.AddMonster(state,
+        state = GameStateTestHooks.AddMonster(state,
             new MonsterActor(definition, state.Player.Position + new Point(1, 0)));
         state.Player.Inventory.TryAdd(new ItemInstance(content.CreateDefinition("dagger")));
         state.Player.Inventory.TryAdd(new ItemInstance(content.CreateDefinition("leather_armor")));

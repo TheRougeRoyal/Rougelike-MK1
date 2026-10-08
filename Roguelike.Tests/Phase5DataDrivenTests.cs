@@ -17,8 +17,8 @@ public sealed class Phase5DataDrivenTests
         MonsterContent goblinContent = content.GetMonster("goblin");
         MonsterActor rat = new(ToDefinition(ratContent) with { SightRadius = 0 }, new Point(3, 1));
         MonsterActor goblin = new(ToDefinition(goblinContent) with { SightRadius = 0 }, new Point(3, 3));
-        GameStateTestHooks.AddMonster(state, rat);
-        GameStateTestHooks.AddMonster(state, goblin);
+        state = GameStateTestHooks.AddMonster(state, rat);
+        state = GameStateTestHooks.AddMonster(state, goblin);
 
         Assert.True(state.Process(GameAction.Wait));
         Assert.Equal(new Point(2, 1), rat.Position);
@@ -228,7 +228,7 @@ public sealed class Phase5DataDrivenTests
         for (int x = 0; x < 20; x++)
             map[x, y] = TileType.Floor;
         state.ConfigureLevel(new Dungeon(map, new Point(1, 1), new Point(18, 10)), new Point(1, 1));
-        GameStateTestHooks.ClearMonsters(state);
+        state = GameStateTestHooks.ClearMonsters(state);
         return state;
     }
 

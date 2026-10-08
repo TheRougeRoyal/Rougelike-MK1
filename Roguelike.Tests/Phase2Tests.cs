@@ -127,7 +127,7 @@ public sealed class Phase2Tests
     public void KillingFirstAdjacentMonsterDoesNotSkipSecondMonster()
     {
         GameState state = new(123, 60, 34, 1, ContentDatabase.LoadDefault());
-        GameStateTestHooks.ClearMonsters(state);
+        state = GameStateTestHooks.ClearMonsters(state);
         Point playerPosition = state.Player.Position;
         Point firstPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, null);
         Point secondPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, firstPosition);
@@ -135,8 +135,8 @@ public sealed class Phase2Tests
         MonsterDefinition secondDefinition = CreateDefinition("Second", 1);
         MonsterActor first = new(firstDefinition, firstPosition);
         MonsterActor second = new(secondDefinition, secondPosition);
-        GameStateTestHooks.AddMonster(state, first);
-        GameStateTestHooks.AddMonster(state, second);
+        state = GameStateTestHooks.AddMonster(state, first);
+        state = GameStateTestHooks.AddMonster(state, second);
         int playerHp = state.Player.Hp;
 
 
@@ -158,7 +158,7 @@ public sealed class Phase2Tests
         MonsterContent archerContent = content.GetMonster("archer");
         MonsterDefinition archerDef = new(archerContent.Id, archerContent.Name, archerContent.Glyph, archerContent.MaxHp, archerContent.Attack, archerContent.Defense, archerContent.SightRadius, archerContent.Behavior, archerContent.Color, archerContent.MinDepth, archerContent.Xp, archerContent.Params);
         MonsterActor archer = new(archerDef, new Point(4, 1));
-        GameStateTestHooks.AddMonster(state, archer);
+        state = GameStateTestHooks.AddMonster(state, archer);
         int playerHp = state.Player.Hp;
 
 
@@ -172,11 +172,11 @@ public sealed class Phase2Tests
     public void LevelUpReportsTheNewLevel()
     {
         GameState state = new(77, 60, 34, 1, ContentDatabase.LoadDefault());
-        GameStateTestHooks.ClearMonsters(state);
+        state = GameStateTestHooks.ClearMonsters(state);
         Point playerPosition = state.Player.Position;
         Point monsterPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, null);
         MonsterDefinition definition = CreateDefinition("Veteran", 1) with { XpValue = 20 };
-        GameStateTestHooks.AddMonster(state, new MonsterActor(definition, monsterPosition));
+        state = GameStateTestHooks.AddMonster(state, new MonsterActor(definition, monsterPosition));
 
 
         Assert.True(state.Process(ActionFor(playerPosition, monsterPosition)));

@@ -63,6 +63,27 @@ public sealed class GameState
             CreateLevel(true);
         }
     }
+
+    internal GameState(GameState source, IEnumerable<MonsterActor> replacement)
+        : this(source.Seed, source.Width, source.Height, 1, source.content, false)
+    {
+        Dungeon = source.Dungeon;
+        Player = source.Player;
+        Depth = source.Depth;
+        Status = source.Status;
+        Message = source.Message;
+        FeedbackTurns = source.FeedbackTurns;
+        FeedbackTint = source.FeedbackTint;
+        FeedbackActor = source.FeedbackActor;
+        TurnNumber = source.TurnNumber;
+        RunStats.Restore(source.RunStats.TurnsSurvived, source.RunStats.MonstersSlain,
+            source.RunStats.ItemsPickedUp, source.RunStats.DamageDealt, source.RunStats.DamageTaken,
+            source.RunStats.MaxDepth, source.RunStats.CauseOfDeath);
+        MessageLog.Restore(source.MessageLog.Entries);
+        gameplayRandom.State = source.gameplayRandom.State;
+        monsters.AddRange(replacement);
+        floorItems.AddRange(source.floorItems);
+    }
     /// <summary>Gets map width.</summary>
     public int Width { get; }
     /// <summary>Gets map height.</summary>
@@ -251,13 +272,6 @@ public sealed class GameState
     {
         for (int i = monsters.Count - 1; i >= 0; i--)
             if (!monsters[i].IsAlive) monsters.RemoveAt(i);
-    }
-
-    /// <summary>Replaces monsters for deterministic internal scenario tests.</summary>
-    internal void ReplaceMonstersForTesting(IEnumerable<MonsterActor> replacement)
-    {
-        monsters.Clear();
-        monsters.AddRange(replacement);
     }
 
     internal void DropLoot(MonsterActor monster)

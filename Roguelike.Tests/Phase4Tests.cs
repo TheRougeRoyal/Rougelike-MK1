@@ -146,7 +146,7 @@ public sealed class Phase4Tests
     {
         GameState state = CreateOpenState();
         MonsterDefinition definition = Monster(ContentDatabase.LoadDefault(), "rat") with { MaxHp = 1 };
-        GameStateTestHooks.AddMonster(state,
+        state = GameStateTestHooks.AddMonster(state,
             new MonsterActor(definition, state.Player.Position + new Point(1, 0)));
         Assert.True(state.Process(GameAction.Move(new Point(1, 0))));
         Assert.Equal(1, state.RunStats.MonstersSlain);
@@ -164,7 +164,7 @@ public sealed class Phase4Tests
 
         GameState death = CreateOpenState();
         MonsterDefinition killer = Monster(ContentDatabase.LoadDefault(), "brute") with { Attack = 100, MaxHp = 100 };
-        GameStateTestHooks.AddMonster(death,
+        death = GameStateTestHooks.AddMonster(death,
             new MonsterActor(killer, death.Player.Position + new Point(1, 0)));
         Assert.True(death.Process(GameAction.Wait));
         Assert.Equal("Brute", death.RunStats.CauseOfDeath);
