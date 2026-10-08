@@ -64,7 +64,7 @@ public sealed class TurnManager
         if (state.Status == GameStatus.Playing && state.Player.Position == state.Dungeon.StairsPosition)
             state.AdvanceDepth();
         state.Dungeon.UpdateFieldOfView(state.Player.Position);
-        foreach (MonsterActor monster in state.MutableMonsters.Where(monster => !monster.IsAlive).ToArray())
+        foreach (MonsterActor monster in state.Monsters.Where(monster => !monster.IsAlive).ToArray())
             state.DropLoot(monster);
         state.CleanupDead();
         if (state.FeedbackTurns > 0) state.FeedbackTurns--;
@@ -268,9 +268,9 @@ public sealed class TurnManager
     private void MonsterTurns(GameState state)
     {
         HashSet<Point> reserved = new();
-        for (int i = 0; i < state.MutableMonsters.Count; i++)
+        for (int i = 0; i < state.Monsters.Count; i++)
         {
-            MonsterActor monster = state.MutableMonsters[i];
+            MonsterActor monster = state.Monsters[i];
             if (!state.Player.IsAlive) break;
             if (!monster.IsAlive) continue;
             int distance = Distance(monster.Position, state.Player.Position);

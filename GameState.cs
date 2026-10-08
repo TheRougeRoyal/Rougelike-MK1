@@ -114,8 +114,6 @@ public sealed class GameState
     public ulong MonsterRandomState => RandomStreams.Create(runSeed, Depth, 0x4D4F4E53UL).State;
     /// <summary>Gets the deterministic loot stream state for this depth.</summary>
     public ulong LootRandomState => RandomStreams.Create(runSeed, Depth, 0x4C4F4F54UL).State;
-    internal List<MonsterActor> MutableMonsters => monsters;
-
     internal void ResetRun()
     {
         Depth = 1;
@@ -253,6 +251,13 @@ public sealed class GameState
     {
         for (int i = monsters.Count - 1; i >= 0; i--)
             if (!monsters[i].IsAlive) monsters.RemoveAt(i);
+    }
+
+    /// <summary>Replaces monsters for deterministic internal scenario tests.</summary>
+    internal void ReplaceMonstersForTesting(IEnumerable<MonsterActor> replacement)
+    {
+        monsters.Clear();
+        monsters.AddRange(replacement);
     }
 
     internal void DropLoot(MonsterActor monster)

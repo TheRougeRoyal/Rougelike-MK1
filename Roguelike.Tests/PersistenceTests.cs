@@ -105,6 +105,28 @@ public sealed class PersistenceTests
     }
 
     [Fact]
+    public void LockedPrimaryIsSkippedWhenCreatingBackup()
+    {
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        string directory = Directory.CreateTempSubdirectory("roguelike-save-").FullName;
+        try
+        {
+            FileSaveStore store = new(directory);
+            GameStatePersistence.Save(new GameState(1, content: content), store, content.ContentHash);
+            string path = Path.Combine(directory, "save.json");
+            using (FileStream lockStream = new(path, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                GameStatePersistence.Save(new GameState(2, content: content), store, content.ContentHash);
+            }
+
+            LoadResult result = GameStatePersistence.Load(store, content.ContentHash, content);
+            Assert.True(result.IsSuccess, result.Reason);
+            Assert.Equal(2, result.State!.Seed);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public void FailureReasonsCoverMissingChecksumNewerAndContentMismatch()
     {
         ContentDatabase content = ContentDatabase.LoadDefault();
@@ -263,6 +285,17 @@ public sealed class PersistenceTests
 
     private static GameAction ChooseWalkerAction(GameState state, IRandom random)
     {
+        Point[] adjacentDirections =
+        {
+            new(0, -1), new(1, 0), new(0, 1), new(-1, 0)
+        };
+        foreach (Point direction in adjacentDirections)
+        {
+            if (state.Monsters.Any(monster =>
+                    monster.IsAlive && monster.Position == state.Player.Position + direction))
+                return GameAction.Move(direction);
+        }
+
         if (random.Next(100) < 20)
         {
             if (random.Next(2) == 0) return GameAction.Wait;

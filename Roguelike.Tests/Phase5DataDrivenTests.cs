@@ -228,7 +228,7 @@ public sealed class Phase5DataDrivenTests
         for (int x = 0; x < 20; x++)
             map[x, y] = TileType.Floor;
         state.ConfigureLevel(new Dungeon(map, new Point(1, 1), new Point(18, 10)), new Point(1, 1));
-        state.MutableMonsters.Clear();
+        GameStateTestHooks.ClearMonsters(state);
         return state;
     }
 

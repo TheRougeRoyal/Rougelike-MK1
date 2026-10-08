@@ -53,9 +53,9 @@ public sealed class FileSaveStore : ISaveStore
                     SaveCodec.Decode(File.ReadAllText(path));
                     File.Copy(path, backup, true);
                 }
-                catch (InvalidDataException)
+                catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
                 {
-                    // Preserve the last known-good backup when the current save is corrupt.
+                    // Preserve the last known-good backup when the current save is invalid or unreadable.
                 }
             }
             File.Move(temp, path, true);

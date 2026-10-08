@@ -46,7 +46,7 @@ public sealed class Phase3Tests
     {
         ContentDatabase content = ContentDatabase.LoadDefault();
         GameState state = new(5, 12, 10, 1, content);
-        state.MutableMonsters.Clear();
+        GameStateTestHooks.ClearMonsters(state);
         ItemContent daggerContent = content.GetItem("dagger");
         ItemDefinition dagger = new(daggerContent.Id, daggerContent.Name, daggerContent.Description, daggerContent.Type, daggerContent.Color, daggerContent.MinDepth, daggerContent.Weight, daggerContent.MaxStack, daggerContent.AttackBonus, daggerContent.DefenseBonus, daggerContent.Glyph);
         state.Player.Inventory.TryAdd(new ItemInstance(dagger));
@@ -265,8 +265,8 @@ public sealed class Phase3Tests
     {
         GameState first = CreateOpenState(101);
         GameState second = CreateOpenState(101);
-        first.MutableMonsters.Clear();
-        second.MutableMonsters.Clear();
+        GameStateTestHooks.ClearMonsters(first);
+        GameStateTestHooks.ClearMonsters(second);
         first.Process(GameAction.Wait);
         first.ConsumeGameplayRandom(17);
         second.Process(GameAction.Wait);
@@ -284,7 +284,7 @@ public sealed class Phase3Tests
     public void MappingAndTeleportationAreHeadlessActions()
     {
         GameState state = new(8, 20, 12);
-        state.MutableMonsters.Clear();
+        GameStateTestHooks.ClearMonsters(state);
         TileType[,] map = new TileType[20, 12];
         for (int y = 0; y < 12; y++)
         for (int x = 0; x < 20; x++)

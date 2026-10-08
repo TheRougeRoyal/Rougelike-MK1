@@ -127,7 +127,7 @@ public sealed class Phase2Tests
     public void KillingFirstAdjacentMonsterDoesNotSkipSecondMonster()
     {
         GameState state = new(123, 60, 34, 1, ContentDatabase.LoadDefault());
-        state.MutableMonsters.Clear();
+        GameStateTestHooks.ClearMonsters(state);
         Point playerPosition = state.Player.Position;
         Point firstPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, null);
         Point secondPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, firstPosition);
@@ -172,7 +172,7 @@ public sealed class Phase2Tests
     public void LevelUpReportsTheNewLevel()
     {
         GameState state = new(77, 60, 34, 1, ContentDatabase.LoadDefault());
-        state.MutableMonsters.Clear();
+        GameStateTestHooks.ClearMonsters(state);
         Point playerPosition = state.Player.Position;
         Point monsterPosition = FindWalkableNeighbor(state.Dungeon, playerPosition, null);
         MonsterDefinition definition = CreateDefinition("Veteran", 1) with { XpValue = 20 };
