@@ -44,6 +44,17 @@ public sealed class ContentHardeningTests
     }
 
     [Fact]
+    public void LoadsDefaultContent()
+    {
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        MonsterContent rat = content.GetMonster("rat");
+
+        Assert.Equal(MonsterBehavior.Chase, rat.Behavior);
+        Assert.Equal(1, rat.Params["alwaysChase"]);
+        Assert.Equal(5, rat.Params["alertTurns"]);
+    }
+
+    [Fact]
     public void AggregatesMultipleErrorsAcrossFiles()
     {
         string dir = CreateTempContent((monsters, items, balance) =>
@@ -252,7 +263,7 @@ public sealed class ContentHardeningTests
         {
             var i = items["items"]!.AsArray().First().AsObject();
             i["minDepth"] = 2;
-            balance["startingLoadout"] = new[] { i["id"]!.GetValue<string>() };
+            balance["startingLoadout"] = new JsonArray(i["id"]!.GetValue<string>());
         });
 
         try
@@ -269,6 +280,7 @@ public sealed class ContentHardeningTests
         Random rng = new(42);
         for (int i = 0; i < 200; i++)
         {
+            string mutatedField = "";
             string dir = CreateTempContent((monsters, items, balance) =>
             {
                 int choice = rng.Next(3);
@@ -276,33 +288,56 @@ public sealed class ContentHardeningTests
                 {
                     var array = monsters["monsters"]!.AsArray();
                     var item = array[rng.Next(array.Count)].AsObject();
-                    if (rng.Next(2) == 0) item.Remove("id");
-                    else item["maxHp"] = "garbage";
+                    if (rng.Next(2) == 0)
+                    {
+                        mutatedField = "id";
+                        item.Remove(mutatedField);
+                    }
+                    else
+                    {
+                        mutatedField = "maxHp";
+                        item[mutatedField] = "garbage";
+                    }
                 }
                 else if (choice == 1)
                 {
                     var array = items["items"]!.AsArray();
                     var item = array[rng.Next(array.Count)].AsObject();
-                    if (rng.Next(2) == 0) item.Remove("glyph");
-                    else item["weight"] = -1;
+                    if (rng.Next(2) == 0)
+                    {
+                        mutatedField = "glyph";
+                        item.Remove(mutatedField);
+                    }
+                    else
+                    {
+                        mutatedField = "weight";
+                        item[mutatedField] = -1;
+                    }
                 }
                 else
                 {
-                    balance.Remove("startingHp");
+                    mutatedField = "startingHp";
+                    balance.Remove(mutatedField);
                 }
             });
 
+            bool loaded = false;
             try
             {
                 ContentDatabase.LoadDirectory(dir);
+                loaded = true;
             }
-            catch (ContentLoadException) { }
+            catch (ContentLoadException ex)
+            {
+                Assert.Contains(mutatedField, ex.Message);
+            }
             catch (Exception ex)
             {
                 Assert.Fail($"Fuzz iteration {i} threw raw exception: {ex.GetType().Name}: {ex.Message}");
             }
             finally { Directory.Delete(dir, true); }
+
+            Assert.False(loaded, $"Fuzz iteration {i} unexpectedly loaded after mutating {mutatedField}.");
         }
     }
 }
-EOF

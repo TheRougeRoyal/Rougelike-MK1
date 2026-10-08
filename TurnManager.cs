@@ -142,7 +142,8 @@ public sealed class TurnManager
         }
         foreach (EffectJson effect in itemContent.Effects)
         {
-            if (!EffectHandlers.TryGetValue(effect.Type, out IItemEffectHandler? handler))
+            if (string.IsNullOrWhiteSpace(effect.Type) ||
+                !EffectHandlers.TryGetValue(effect.Type, out IItemEffectHandler? handler))
                 throw new InvalidOperationException($"No item effect handler registered for '{effect.Type}'.");
             if (!handler.Apply(state, effect, state.GameplayRandom)) return false;
         }
@@ -389,7 +390,8 @@ public sealed class TurnManager
         public bool Apply(GameState state, EffectJson effect, IRandom random)
         {
             PrepareConsumedInventoryAction(state);
-            state.Player.Heal(effect.Amount);
+            state.Player.Heal(effect.Amount ??
+                throw new InvalidOperationException("Heal effect is missing amount."));
             return true;
         }
     }
@@ -402,11 +404,18 @@ public sealed class TurnManager
             StatusEffectType stat = effect.Stat?.Equals("defense", StringComparison.OrdinalIgnoreCase) == true
                 ? StatusEffectType.Defense : StatusEffectType.Strength;
             StatusEffect? active = state.Player.Effects.FirstOrDefault(item => item.Type == stat);
-            if (active is null) state.Player.Effects.Add(new StatusEffect(stat, effect.Amount, effect.Turns));
+            if (active is null)
+            {
+                state.Player.Effects.Add(new StatusEffect(stat,
+                    effect.Amount ?? throw new InvalidOperationException("Buff effect is missing amount."),
+                    effect.Turns ?? throw new InvalidOperationException("Buff effect is missing turns.")));
+            }
             else
             {
-                active.Magnitude = effect.Amount;
-                active.RemainingTurns = effect.Turns;
+                active.Magnitude = effect.Amount ??
+                    throw new InvalidOperationException("Buff effect is missing amount.");
+                active.RemainingTurns = effect.Turns ??
+                    throw new InvalidOperationException("Buff effect is missing turns.");
             }
             return true;
         }

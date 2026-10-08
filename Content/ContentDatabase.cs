@@ -134,11 +134,11 @@ public sealed class ContentDatabase
                                 {
                                     "ranged" => new[] { "minRange", "maxRange", "alertTurns" },
                                     "slow" => new[] { "actEveryNTurns", "alertTurns" },
-                                    "chase" => new[] { "alertTurns" },
+                                    "chase" => new[] { "alertTurns", "alwaysChase" },
                                     "idle" => new[] { "alertTurns", "alwaysChase" },
                                     _ => Array.Empty<string>()
                                 };
-                                ValidateProperties(paramsProp.Value, allowedParams, $"{itemPath}.params", errors);
+                                ValidateProperties(paramsProp, allowedParams, $"{itemPath}.params", errors);
                             }
                         }
                     }
@@ -160,12 +160,12 @@ public sealed class ContentDatabase
                         var itemObj = element[i];
                         if (itemObj.TryGetProperty("effects", out var effectsProp) && effectsProp.ValueKind == JsonValueKind.Array)
                         {
-                            for (int j = 0; j < effectsProp.Value.GetArrayLength(); j++)
+                            for (int j = 0; j < effectsProp.GetArrayLength(); j++)
                             {
                                 string effectPath = $"{itemPath}.effects[{j}]";
-                                if (effectsProp.Value[j].ValueKind == JsonValueKind.Object)
+                                if (effectsProp[j].ValueKind == JsonValueKind.Object)
                                 {
-                                    var effectObj = effectsProp.Value[j];
+                                    var effectObj = effectsProp[j];
                                     if (effectObj.TryGetProperty("type", out var typeProp) && typeProp.ValueKind == JsonValueKind.String)
                                     {
                                         string type = typeProp.GetString()!;
@@ -177,7 +177,7 @@ public sealed class ContentDatabase
                                             "reveal_map" => new[] { "type" },
                                             _ => new string[] { "type" }
                                         };
-                                        ValidateProperties(effectsProp.Value[j], allowedEffectProps, effectPath, errors);
+                                        ValidateProperties(effectsProp[j], allowedEffectProps, effectPath, errors);
                                     }
                                 }
                             }
@@ -396,12 +396,12 @@ public sealed class ContentDatabase
                 }
             }
 
-            if (item.Effects == null)
+            if (item.Effects == null && type == ItemType.Consumable)
             {
                 errors.Add($"{prefix}.effects array is required");
                 hasError = true;
             }
-            else
+            else if (item.Effects is not null)
             {
                 foreach (EffectJson effect in item.Effects)
                 {
@@ -453,7 +453,7 @@ public sealed class ContentDatabase
             if (!hasError)
             {
                 result[item.Id!] = new ItemContent(item.Id!, item.Name!, item.Description!, item.Glyph![0], color, type,
-                    item.MinDepth!.Value, item.Weight!.Value, item.MaxStack!.Value, item.Effects!, item.AttackBonus ?? 0,
+                    item.MinDepth!.Value, item.Weight!.Value, item.MaxStack!.Value, item.Effects ?? Array.Empty<EffectJson>(), item.AttackBonus ?? 0,
                     item.DefenseBonus ?? 0, item.Slot);
             }
         }
@@ -533,8 +533,8 @@ public sealed class ContentDatabase
         {
             for (int index = 0; index < file.StartingLoadout.Length; index++)
             {
-                string id = file.StartingLoadout[index];
-                if (!items.TryGetValue(id, out ItemContent item))
+                string id = file.StartingLoadout![index]!;
+                if (id is null || !items.TryGetValue(id, out ItemContent? item) || item is null)
                 {
                     errors.Add($"{prefix}: $.startingLoadout[{index}] references unknown item id '{id}'");
                     hasError = true;
