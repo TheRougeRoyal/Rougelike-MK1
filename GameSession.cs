@@ -44,12 +44,7 @@ public sealed class GameSession
     /// <summary>Executes one UI command without any window dependency.</summary>
     public void Execute(UiCommand command)
     {
-        if (State.Status == GameStatus.Dead && Screens.Screen == ScreenKind.Playing)
-        {
-            saveStore.Delete();
-            RecordHistory("dead");
-            Screens.GameOver();
-        }
+        bool wasDead = State.Status == GameStatus.Dead;
         switch (command.Kind)
         {
             case UiCommandKind.Quit: QuitRequested = true; break;
@@ -70,9 +65,20 @@ public sealed class GameSession
                     LoadResult result = GameStatePersistence.Load(saveStore, content.ContentHash, content);
                     if (result.State is not null)
                     {
-                        State = result.State;
-                        Screens.Start();
+                        if (result.State.Status == GameStatus.Dead)
+                        {
+                            saveStore.Delete();
+                            State.SetFeedback("Save is from a finished run and was removed.",
+                                Microsoft.Xna.Framework.Color.Yellow);
+                        }
+                        else
+                        {
+                            State = result.State;
+                            Screens.Start();
+                        }
                     }
+                    else if (result.Reason is not null)
+                        State.SetFeedback(result.Reason, Microsoft.Xna.Framework.Color.Yellow);
                 }
                 break;
             case UiCommandKind.NewRunWithSeed:
@@ -82,8 +88,7 @@ public sealed class GameSession
                 Screens.ShowRunHistory();
                 break;
             case UiCommandKind.SaveAndQuit:
-                GameStatePersistence.Save(State, saveStore, content.ContentHash);
-                QuitRequested = true;
+                SaveAndQuit();
                 break;
             case UiCommandKind.AbandonRun:
                 if (Screens.Overlay == UiOverlay.AbandonConfirmation)
@@ -146,11 +151,7 @@ public sealed class GameSession
             case UiCommandKind.None: break;
             default: throw new InvalidOperationException($"Unhandled UI command: {command.Kind}");
         }
-        if (State.Status == GameStatus.Dead && Screens.Screen == ScreenKind.Playing)
-        {
-            Screens.GameOver();
-            InventoryCursor = 0;
-        }
+        FinalizeDeath(wasDead, command.Kind);
     }
 
     private void Accept()
@@ -207,6 +208,42 @@ public sealed class GameSession
         int depth = State.Depth;
         State.Process(action);
         if (State.Status == GameStatus.Playing && State.Depth != depth)
+        {
+            try { GameStatePersistence.Save(State, saveStore, content.ContentHash); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                State.SetFeedback($"Could not save: {exception.Message}", Microsoft.Xna.Framework.Color.Yellow);
+            }
+        }
+    }
+
+    private void SaveAndQuit()
+    {
+        if (State.Status == GameStatus.Dead) return;
+        try
+        {
             GameStatePersistence.Save(State, saveStore, content.ContentHash);
+            QuitRequested = true;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            State.SetFeedback($"Could not save: {exception.Message}", Microsoft.Xna.Framework.Color.Yellow);
+        }
+    }
+
+    private void FinalizeDeath(bool wasDead, UiCommandKind commandKind)
+    {
+        if (State.Status != GameStatus.Dead) return;
+        saveStore.Delete();
+        RecordHistory("dead");
+        if (Screens.Screen == ScreenKind.Playing)
+        {
+            Screens.GameOver();
+            InventoryCursor = 0;
+        }
+        if (wasDead && commandKind == UiCommandKind.Cancel && Screens.Screen == ScreenKind.GameOver)
+        {
+            Screens.Title();
+        }
     }
 }

@@ -73,6 +73,7 @@ public sealed class FileSaveStore : ISaveStore
     public void Delete()
     {
         if (File.Exists(path)) File.Delete(path);
+        if (File.Exists(path + ".bak")) File.Delete(path + ".bak");
     }
 }
 
@@ -107,7 +108,7 @@ public sealed class MemorySaveStore : ISaveStore
     /// <inheritdoc />
     public void Delete()
     {
-        Backup = Value;
         Value = null;
+        Backup = null;
     }
 }
