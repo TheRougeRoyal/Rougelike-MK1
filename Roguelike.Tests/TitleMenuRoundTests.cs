@@ -92,7 +92,46 @@ public sealed class TitleMenuRoundTests
         }
     }
 
-    // Gap 2: Pause Menu Quit to Title Tests
+    [Fact]
+    public void TwoRunsWithSameSeedGetOwnRanks()
+    {
+        MemoryRunHistoryStore history = new();
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        
+        // First run with seed 42, depth 5
+        GameSession session1 = new(42, content: content, historyStore: history);
+        session1.Execute(new UiCommand(UiCommandKind.Start));
+        session1.State.Status = GameStatus.Dead;
+        session1.State.RunStats.MaxDepth = 5;
+        session1.State.RunStats.TurnsSurvived = 100;
+        session1.State.RunStats.MonstersSlain = 5;
+        session1.State.RunStats.CauseOfDeath = "dead";
+        session1.Execute(new UiCommand(UiCommandKind.None));
+        
+        int? rank1 = session1.RankPosition;
+        Assert.NotNull(rank1);
+        Assert.Equal(1, rank1); // First run ranks #1
+        string id1 = session1.State.Seed.ToString();
+        
+        // Second run with same seed 42 but lower depth
+        GameSession session2 = new(42, content: content, historyStore: history);
+        session2.Execute(new UiCommand(UiCommandKind.Start));
+        session2.State.Status = GameStatus.Dead;
+        session2.State.RunStats.MaxDepth = 3; // Lower depth
+        session2.State.RunStats.TurnsSurvived = 50;
+        session2.State.RunStats.MonstersSlain = 3;
+        session2.State.RunStats.CauseOfDeath = "dead";
+        session2.Execute(new UiCommand(UiCommandKind.None));
+        
+        int? rank2 = session2.RankPosition;
+        Assert.NotNull(rank2);
+        Assert.Equal(2, rank2); // Second run with same seed ranks lower due to lower depth
+        
+        // Verify both are in history with different IDs
+        var records = history.Read();
+        Assert.Equal(2, records.Count);
+        Assert.NotEqual(records[0].Id, records[1].Id); // Different IDs despite same seed
+    }
     [Fact]
     public void PauseMenuQuitToTitleReturnsToTitle()
     {
@@ -162,12 +201,12 @@ public sealed class TitleMenuRoundTests
 
     // Gap 3: Rank Recording Tests
     [Fact]
-    public void RankRecordingRecords11thOrLowerAsNotRecorded()
+    public void RankRecordingRecords11thRunWithCorrectRank()
     {
         MemoryRunHistoryStore history = new();
         
-        // Create 11 runs at depths: 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
-        for (int depth = 11; depth >= 1; depth--)
+        // Create 10 runs at depths: 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
+        for (int depth = 10; depth >= 1; depth--)
         {
             history.Append(new RunRecord(
                 Guid.NewGuid().ToString("N"),
@@ -182,107 +221,117 @@ public sealed class TitleMenuRoundTests
             ));
         }
         
-        // Verify that top 10 excludes the depth 1 run
-        var records = history.Read();
-        Assert.Equal(11, records.Count);
-        
-        var top = RunRanking.Top(records);
-        Assert.Equal(10, top.Count);
-        
-        // The depth 1 run should NOT be in top 10
-        var depth1Run = records.FirstOrDefault(r => r.DepthReached == 1);
-        Assert.NotNull(depth1Run);
-        Assert.DoesNotContain(depth1Run, top);
-        
-        // Rule: Runs not in top 10 show "RUN NOT RECORDED"
-        // When a new run is recorded at depth 1, it won't be in top 10, so RankPosition should be null
-    }
-
-    [Fact]
-    public void RankRecordingRecordsTopTenRuns()
-    {
-        MemoryRunHistoryStore history = new();
-        
-        // Create 8 existing runs at various depths
-        for (int depth = 8; depth >= 1; depth--)
-        {
-            history.Append(new RunRecord(
-                Guid.NewGuid().ToString("N"),
-                Seed: depth,
-                DateUtc: DateTime.UtcNow.AddDays(-depth),
-                DepthReached: depth,
-                Level: 1,
-                Turns: 100 + depth,
-                Kills: depth,
-                CauseOfDeath: "dead",
-                ContentHash: "test"
-            ));
-        }
-        
-        // Verify we can read the history and that top 10 includes all 8
-        var records = history.Read();
-        Assert.Equal(8, records.Count);
-        
-        var top = RunRanking.Top(records);
-        Assert.Equal(8, top.Count);
-        
-        // All should be in top 10
-        foreach (var record in records)
-            Assert.Contains(record, top);
-    }
-
-    [Fact]
-    public void GameOverScreenShowsRankWhenRecorded()
-    {
-        MemoryRunHistoryStore history = new();
-        GameSession session = new(5, content: ContentDatabase.LoadDefault(), historyStore: history);
+        // Now create an 11th run at depth 11 - should rank #1 (best)
+        GameSession session = new(100, content: ContentDatabase.LoadDefault(), historyStore: history);
         session.Execute(new UiCommand(UiCommandKind.Start));
-        
-        // Simulate death with rank
         session.State.Status = GameStatus.Dead;
+        session.State.RunStats.MaxDepth = 11;
+        session.State.RunStats.TurnsSurvived = 150;
+        session.State.RunStats.MonstersSlain = 10;
         session.State.RunStats.CauseOfDeath = "dead";
-        session.State.RunStats.MaxDepth = 5;
-        session.State.RunStats.TurnsSurvived = 100;
-        session.State.RunStats.MonstersSlain = 5;
         
         session.Execute(new UiCommand(UiCommandKind.None));
         
-        // Record should have been created
-        Assert.True(history.Read().Count > 0);
-        
-        // Rank should be set
+        // Should be ranked #1 since it has the highest depth
         Assert.NotNull(session.RankPosition);
+        Assert.Equal(1, session.RankPosition);
+        Assert.Equal(11, session.TotalRuns);
     }
 
     [Fact]
-    public void ExamineDescriptionTruncatesFitsPanelWidth()
+    public void RankRecordingRecordsLowestRankedRun()
     {
-        GameSession session = new(6, content: ContentDatabase.LoadDefault());
+        MemoryRunHistoryStore history = new();
+        ContentDatabase content = ContentDatabase.LoadDefault();
+        
+        // Create 10 runs at depths: 10, 9, 8, 7, 6, 5, 4, 3, 2, 1
+        for (int depth = 10; depth >= 1; depth--)
+        {
+            history.Append(new RunRecord(
+                Guid.NewGuid().ToString("N"),
+                Seed: depth,
+                DateUtc: DateTime.UtcNow.AddDays(-depth),
+                DepthReached: depth,
+                Level: 1,
+                Turns: 100 + depth,
+                Kills: depth,
+                CauseOfDeath: "dead",
+                ContentHash: "test"
+            ));
+        }
+        
+        // Now create an 11th run at depth 1 (ties with existing depth 1 run)
+        // Ranking by depth, level, then FEWER turns
+        GameSession session = new(100, content: ContentDatabase.LoadDefault(), historyStore: history);
         session.Execute(new UiCommand(UiCommandKind.Start));
+        session.State.Status = GameStatus.Dead;
+        session.State.RunStats.MaxDepth = 1;
+        session.State.RunStats.TurnsSurvived = 50; // Fewer turns = better rank
+        session.State.RunStats.MonstersSlain = 0;
+        session.State.RunStats.CauseOfDeath = "dead";
         
-        // Get a description and verify it truncates reasonably
-        string description = session.GetExamineDescription(session.State.Player.Position);
+        session.Execute(new UiCommand(UiCommandKind.None));
         
-        // TextLayout.Truncate at 70 chars should work at both scales
-        string truncated = TextLayout.Truncate(description, 70);
-        
-        Assert.True(truncated.Length <= 70);
+        // Should be ranked #10 (tied depth 1 with fewer turns)
+        Assert.NotNull(session.RankPosition);
+        Assert.Equal(10, session.RankPosition);
+        Assert.Equal(11, session.TotalRuns);
     }
 
     [Fact]
-    public void ExamineDescriptionFitsAtScale2()
+    public void RankRecordingShowsRunNotRecordedOnAppendFailure()
     {
-        GameSession session = new(7, content: ContentDatabase.LoadDefault());
+        ThrowingAppendStore history = new();
+        GameSession session = new(200, content: ContentDatabase.LoadDefault(), historyStore: history);
         session.Execute(new UiCommand(UiCommandKind.Start));
+        session.State.Status = GameStatus.Dead;
+        session.State.RunStats.MaxDepth = 5;
+        session.State.RunStats.TurnsSurvived = 100;
+        session.State.RunStats.MonstersSlain = 5;
+        session.State.RunStats.CauseOfDeath = "dead";
         
-        // Even longer description should fit when truncated for panel
-        string description = session.GetExamineDescription(session.State.Player.Position);
+        session.Execute(new UiCommand(UiCommandKind.None));
         
-        // At scale 2, text is larger, so we might need fewer chars
-        // For testing, verify it still truncates correctly
-        string truncated = TextLayout.Truncate(description, 35); // Half the width for scale 2
+        // When append fails, RankPosition should be null
+        Assert.Null(session.RankPosition);
+        Assert.Null(session.TotalRuns);
+    }
+
+    private sealed class ThrowingAppendStore : IRunHistoryStore
+    {
+        public IReadOnlyList<RunRecord> Read() => [];
+        public void Append(RunRecord record) => throw new IOException("append failed");
+    }
+
+    [Fact]
+    public void ExamineDescriptionTruncationLimitSupportsScale1()
+    {
+        // Verify that 70-character limit works at scale 1
+        // BitmapFont.Advance = 6, so 70 chars * 6 = 420 pixels at scale 1
+        // HUD width = 720 pixels, so 420 + 8px margin = 428px < 720px ✓
         
-        Assert.True(truncated.Length <= 35);
+        string text = new string('a', 70);
+        string truncated = TextLayout.Truncate(text, 70);
+        
+        Assert.Equal(70, truncated.Length);
+        
+        int renderedWidth = truncated.Length * BitmapFont.GlyphAdvance;
+        Assert.True(renderedWidth + 8 <= 720, "70-char limit should fit at scale 1");
+    }
+
+    [Fact]
+    public void ExamineDescriptionTruncationLimitExceedsScale2()
+    {
+        // Note: 70-character limit does NOT fit at scale 2
+        // 70 chars * 6 * 2 = 840 pixels at scale 2
+        // HUD width = 720 pixels, so 840 > 720 (exceeds by 120px)
+        // Currently the renderer always uses scale 1, but this test documents the limitation
+        
+        string text = new string('a', 70);
+        int renderedWidthScale2 = text.Length * BitmapFont.GlyphAdvance * 2;
+        
+        // This exceeds the HUD width
+        Assert.True(renderedWidthScale2 + 8 > 720, "70-char limit exceeds HUD at scale 2");
     }
 
     [Fact]

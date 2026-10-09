@@ -16,6 +16,7 @@ public sealed class GameSession
     private string seedInput = string.Empty;
     private int historyScrollOffset = 0;
     private Point examineCursor = Point.Zero;
+    private string? lastRecordedRunId = null;
     /// <summary>Creates a session with a fresh run.</summary>
     public GameSession(int seed, int width = 60, int height = 34, ContentDatabase? content = null,
         ISaveStore? saveStore = null, IRunHistoryStore? historyStore = null, string? saveDirectory = null)
@@ -322,16 +323,31 @@ public sealed class GameSession
     {
         if (historyRecorded) return;
         historyRecorded = true;
-        historyStore.Append(new RunRecord(Guid.NewGuid().ToString("N"), State.Seed, DateTime.UtcNow,
-            State.RunStats.MaxDepth, State.Player.Level, State.RunStats.TurnsSurvived,
-            State.RunStats.MonstersSlain, cause, content.ContentHash));
         
-        // Find rank in history
+        string recordId = Guid.NewGuid().ToString("N");
+        try
+        {
+            historyStore.Append(new RunRecord(recordId, State.Seed, DateTime.UtcNow,
+                State.RunStats.MaxDepth, State.Player.Level, State.RunStats.TurnsSurvived,
+                State.RunStats.MonstersSlain, cause, content.ContentHash));
+            lastRecordedRunId = recordId;
+        }
+        catch
+        {
+            // If append fails, the run is not recorded
+            lastRecordedRunId = null;
+            TotalRuns = null;
+            RankPosition = null;
+            return;
+        }
+        
+        // Find rank in history - match by ID, not by seed
         var allRecords = historyStore.Read();
-        var ranked = RunRanking.Top(allRecords).ToList();
         TotalRuns = allRecords.Count;
-        int pos = ranked.FindIndex(r => r.Seed == State.Seed);
-        RankPosition = pos >= 0 ? pos + 1 : null; // 1-indexed, or null if not in top 10
+        
+        var ranked = RunRanking.OrderedByRank(allRecords).ToList();
+        int rankIndex = ranked.FindIndex(r => r.Id == recordId);
+        RankPosition = rankIndex >= 0 ? rankIndex + 1 : null; // 1-indexed
     }
 
     private void ProcessAndAutosave(GameAction action)

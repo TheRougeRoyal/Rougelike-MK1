@@ -19,12 +19,16 @@ public interface IRunHistoryStore
 
 public static class RunRanking
 {
-    public static IReadOnlyList<RunRecord> Top(IReadOnlyList<RunRecord> records) =>
+    /// <summary>Gets all records ordered by rank (depth desc, level desc, turns asc).</summary>
+    public static IReadOnlyList<RunRecord> OrderedByRank(IReadOnlyList<RunRecord> records) =>
         records.OrderByDescending(record => record.DepthReached)
             .ThenByDescending(record => record.Level)
             .ThenBy(record => record.Turns)
-            .Take(10)
             .ToArray();
+
+    /// <summary>Gets the top 10 ranked runs for the Run History screen.</summary>
+    public static IReadOnlyList<RunRecord> Top(IReadOnlyList<RunRecord> records) =>
+        OrderedByRank(records).Take(10).ToArray();
 }
 
 /// <summary>In-memory history store.</summary>

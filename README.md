@@ -27,7 +27,7 @@ Implemented in code:
 - Seed Entry screen: accept digits 0-9, max 9 digits, empty input or Enter to start, Backspace to delete, Esc to return to title.
 - Run History screen: top 10 runs ranked by depth, then level, then turns; scroll with Up/Down.
 - Pause menu with Resume, Save and Quit, Abandon Run (with confirmation), Help, and Quit to Title.
-- Game Over screen with rank position, seed, and run stats.
+- Game Over screen with rank position (1-indexed, or "RUN NOT RECORDED" if append failed), seed, and run stats.
 - Examine mode: X to enter, arrows/WASD/numpad to move cursor over visible tiles, Esc to exit; shows terrain/monster/item descriptions without consuming turns.
 - Automated unit and integration coverage in `Roguelike.Tests`.
 
