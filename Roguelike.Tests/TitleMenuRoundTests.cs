@@ -304,34 +304,54 @@ public sealed class TitleMenuRoundTests
     }
 
     [Fact]
-    public void ExamineDescriptionTruncationLimitSupportsScale1()
+    public void ExamineDescriptionRenderedWidthFitsAtScale1()
     {
-        // Verify that 70-character limit works at scale 1
-        // BitmapFont.Advance = 6, so 70 chars * 6 = 420 pixels at scale 1
-        // HUD width = 720 pixels, so 420 + 8px margin = 428px < 720px ✓
+        // Measure the real rendered width of truncated examine descriptions
+        GameSession session = new(1, content: ContentDatabase.LoadDefault());
+        session.Execute(new UiCommand(UiCommandKind.Start));
         
-        string text = new string('a', 70);
-        string truncated = TextLayout.Truncate(text, 70);
+        string description = session.GetExamineDescription(session.State.Player.Position);
         
-        Assert.Equal(70, truncated.Length);
+        // Truncate to 70 chars (renderer's limit)
+        string truncated = TextLayout.Truncate(description, 70);
         
-        int renderedWidth = truncated.Length * BitmapFont.GlyphAdvance;
-        Assert.True(renderedWidth + 8 <= 720, "70-char limit should fit at scale 1");
+        // Measure rendered width with BitmapFont at scale 1
+        Point measured = BitmapFont.Measure(truncated, scale: 1);
+        int renderedWidth = measured.X;
+        
+        // Get available HUD text width: standard game is 60 width * 12 tileSize
+        int hudTextWidth = GameRenderer.GetHudTextWidth(60, 12);
+        
+        // Assert rendered width fits within the HUD text width
+        Assert.True(renderedWidth <= hudTextWidth, 
+            $"Rendered width {renderedWidth}px exceeds HUD text width {hudTextWidth}px");
     }
 
     [Fact]
-    public void ExamineDescriptionTruncationLimitExceedsScale2()
+    public void ExamineDescriptionTruncationFitsRealRenderer()
     {
-        // Note: 70-character limit does NOT fit at scale 2
-        // 70 chars * 6 * 2 = 840 pixels at scale 2
-        // HUD width = 720 pixels, so 840 > 720 (exceeds by 120px)
-        // Currently the renderer always uses scale 1, but this test documents the limitation
+        // Test with various description types to ensure truncation works across the board
+        GameSession session = new(1, content: ContentDatabase.LoadDefault());
+        session.Execute(new UiCommand(UiCommandKind.Start));
         
-        string text = new string('a', 70);
-        int renderedWidthScale2 = text.Length * BitmapFont.GlyphAdvance * 2;
+        // Test multiple examine positions
+        Point testPos = session.State.Player.Position;
         
-        // This exceeds the HUD width
-        Assert.True(renderedWidthScale2 + 8 > 720, "70-char limit exceeds HUD at scale 2");
+        for (int i = 0; i < 5; i++)
+        {
+            testPos = testPos + new Point(i, 0);
+            if (!session.State.Dungeon.InBounds(testPos)) break;
+            
+            string description = session.GetExamineDescription(testPos);
+            if (string.IsNullOrEmpty(description)) continue;
+            
+            string truncated = TextLayout.Truncate(description, 70);
+            Point measured = BitmapFont.Measure(truncated, scale: 1);
+            
+            int hudTextWidth = GameRenderer.GetHudTextWidth(60, 12);
+            Assert.True(measured.X <= hudTextWidth,
+                $"Description '{truncated}' rendered width {measured.X}px exceeds HUD text width {hudTextWidth}px");
+        }
     }
 
     [Fact]

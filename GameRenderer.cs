@@ -8,11 +8,15 @@ namespace Roguelike;
 public sealed class GameRenderer
 {
     private const string ExperienceLabel = "XP";
+    private const int HudLeftMargin = 8;
     private readonly Texture2D pixel;
     private readonly SpriteBatch spriteBatch;
     private readonly int tileSize;
     private readonly int hudHeight;
     private readonly ITextRenderer text;
+
+    /// <summary>Gets the width available for HUD text given dungeon width and tile size.</summary>
+    public static int GetHudTextWidth(int dungeonWidth, int tileSize) => dungeonWidth * tileSize - HudLeftMargin;
 
     /// <summary>Initializes a renderer using the single white pixel texture.</summary>
     public GameRenderer(GraphicsDevice graphicsDevice, SpriteBatch spriteBatch, int tileSize, int hudHeight)
@@ -105,29 +109,28 @@ public sealed class GameRenderer
     {
         int top = dungeon.Height * tileSize;
         DrawRectangle(new Rectangle(0, top, dungeon.Width * tileSize, hudHeight), new Color(14, 16, 24));
-        int left = 8;
         
         // Draw examine description above HUD if in examine mode
         if (examineMode && !string.IsNullOrEmpty(examineDescription))
         {
             string truncated = TextLayout.Truncate(examineDescription, 70);
-            text.DrawString(truncated, new Point(left, top - 12), Color.LimeGreen);
+            text.DrawString(truncated, new Point(HudLeftMargin, top - 12), Color.LimeGreen);
         }
         
-        text.DrawString($"HP {player.Hp}/{player.MaxHp}", new Point(left, top + 8), Color.White, 1, true);
-        DrawBar(new Rectangle(left, top + 20, 150, 7), player.Hp, player.MaxHp, Color.Red);
+        text.DrawString($"HP {player.Hp}/{player.MaxHp}", new Point(HudLeftMargin, top + 8), Color.White, 1, true);
+        DrawBar(new Rectangle(HudLeftMargin, top + 20, 150, 7), player.Hp, player.MaxHp, Color.Red);
         text.DrawString($"{ExperienceLabel} {experience}/{player.ExperienceToNextLevel}",
-            new Point(left, top + 31), Color.White);
-        DrawBar(new Rectangle(left, top + 43, 150, 7), experience, player.ExperienceToNextLevel, Color.CornflowerBlue);
-        text.DrawString($"Level {level}  Depth {depth}", new Point(left, top + 55), Color.Gold);
-        text.DrawString($"ATK {player.TotalAttack}  DEF {player.TotalDefense}", new Point(left, top + 67), Color.White);
+            new Point(HudLeftMargin, top + 31), Color.White);
+        DrawBar(new Rectangle(HudLeftMargin, top + 43, 150, 7), experience, player.ExperienceToNextLevel, Color.CornflowerBlue);
+        text.DrawString($"Level {level}  Depth {depth}", new Point(HudLeftMargin, top + 55), Color.Gold);
+        text.DrawString($"ATK {player.TotalAttack}  DEF {player.TotalDefense}", new Point(HudLeftMargin, top + 67), Color.White);
         string weapon = player.EquippedWeapon?.Definition.Name ?? "None";
         string armor = player.EquippedArmor?.Definition.Name ?? "None";
         text.DrawString($"W:{TextLayout.Truncate(weapon, 14)} A:{TextLayout.Truncate(armor, 14)}",
-            new Point(left, top + 79), Color.LightGray);
+            new Point(HudLeftMargin, top + 79), Color.LightGray);
         StatusEffect? buff = player.Effects.FirstOrDefault();
         if (buff is not null) text.DrawString($"Buff +{buff.Magnitude} ({buff.RemainingTurns})",
-            new Point(left, top + 91), Color.Orange);
+            new Point(HudLeftMargin, top + 91), Color.Orange);
 
         int logLeft = 330;
         text.DrawString("MESSAGE LOG", new Point(logLeft, top + 8), Color.Gold);

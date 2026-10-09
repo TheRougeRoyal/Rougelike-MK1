@@ -28,7 +28,7 @@ Implemented in code:
 - Run History screen: top 10 runs ranked by depth, then level, then turns; scroll with Up/Down.
 - Pause menu with Resume, Save and Quit, Abandon Run (with confirmation), Help, and Quit to Title.
 - Game Over screen with rank position (1-indexed, or "RUN NOT RECORDED" if append failed), seed, and run stats.
-- Examine mode: X to enter, arrows/WASD/numpad to move cursor over visible tiles, Esc to exit; shows terrain/monster/item descriptions without consuming turns.
+- Examine mode: X to enter, arrows/WASD/numpad to move cursor over visible tiles, Esc to exit; shows terrain/monster/item descriptions (scale 1 text) without consuming turns.
 - Automated unit and integration coverage in `Roguelike.Tests`.
 
 ## Requirements
