@@ -39,7 +39,7 @@ public sealed class GameRenderer
     {
         spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         DrawMap(dungeon, player, monsters, floorItems, feedbackActor, examineMode, examineCursor);
-        DrawHud(dungeon, player, depth, level, experience, messageLog, turnNumber, stats);
+        DrawHud(dungeon, player, depth, level, experience, messageLog, turnNumber, stats, examineMode, examineDescription);
         if (inventoryOpen) DrawInventory(player, inventoryCursor);
         if (restartConfirmation) DrawRestartConfirmation(dungeon.Width * tileSize, dungeon.Height * tileSize);
         if (screen != ScreenKind.Playing) DrawScreen(screen, depth, stats, titleMenuIndex, seedInput, historyScrollOffset, historyRecords, savedSeed, pauseMenuIndex, canContinue, rankPosition, totalRuns, seed);
@@ -101,11 +101,19 @@ public sealed class GameRenderer
     }
 
     private void DrawHud(Dungeon dungeon, PlayerActor player, int depth, int level, int experience,
-        MessageLog? log, int turnNumber, RunStats? stats)
+        MessageLog? log, int turnNumber, RunStats? stats, bool examineMode = false, string examineDescription = "")
     {
         int top = dungeon.Height * tileSize;
         DrawRectangle(new Rectangle(0, top, dungeon.Width * tileSize, hudHeight), new Color(14, 16, 24));
         int left = 8;
+        
+        // Draw examine description above HUD if in examine mode
+        if (examineMode && !string.IsNullOrEmpty(examineDescription))
+        {
+            string truncated = TextLayout.Truncate(examineDescription, 70);
+            text.DrawString(truncated, new Point(left, top - 12), Color.LimeGreen);
+        }
+        
         text.DrawString($"HP {player.Hp}/{player.MaxHp}", new Point(left, top + 8), Color.White, 1, true);
         DrawBar(new Rectangle(left, top + 20, 150, 7), player.Hp, player.MaxHp, Color.Red);
         text.DrawString($"{ExperienceLabel} {experience}/{player.ExperienceToNextLevel}",
