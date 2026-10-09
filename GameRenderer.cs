@@ -33,14 +33,16 @@ public sealed class GameRenderer
         bool inventoryOpen = false, int inventoryCursor = -1, MessageLog? messageLog = null,
         int turnNumber = 0, ScreenKind screen = ScreenKind.Playing, RunStats? stats = null,
         bool restartConfirmation = false, int titleMenuIndex = 0, string seedInput = "",
-        int historyScrollOffset = 0, IReadOnlyList<RunRecord>? historyRecords = null, int? savedSeed = null, int pauseMenuIndex = 0)
+        int historyScrollOffset = 0, IReadOnlyList<RunRecord>? historyRecords = null, int? savedSeed = null, 
+        int pauseMenuIndex = 0, bool canContinue = false, int? rankPosition = null, int? totalRuns = null, int? seed = null,
+        bool examineMode = false, Point examineCursor = default, string examineDescription = "")
     {
         spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-        DrawMap(dungeon, player, monsters, floorItems, feedbackActor);
+        DrawMap(dungeon, player, monsters, floorItems, feedbackActor, examineMode, examineCursor);
         DrawHud(dungeon, player, depth, level, experience, messageLog, turnNumber, stats);
         if (inventoryOpen) DrawInventory(player, inventoryCursor);
         if (restartConfirmation) DrawRestartConfirmation(dungeon.Width * tileSize, dungeon.Height * tileSize);
-        if (screen != ScreenKind.Playing) DrawScreen(screen, depth, stats, titleMenuIndex, seedInput, historyScrollOffset, historyRecords, savedSeed, pauseMenuIndex);
+        if (screen != ScreenKind.Playing) DrawScreen(screen, depth, stats, titleMenuIndex, seedInput, historyScrollOffset, historyRecords, savedSeed, pauseMenuIndex, canContinue, rankPosition, totalRuns, seed);
         spriteBatch.End();
     }
 
@@ -57,7 +59,7 @@ public sealed class GameRenderer
     }
 
     private void DrawMap(Dungeon dungeon, PlayerActor player, IReadOnlyList<MonsterActor> monsters,
-        IReadOnlyList<FloorItem>? floorItems, Actor? feedbackActor)
+        IReadOnlyList<FloorItem>? floorItems, Actor? feedbackActor, bool examineMode = false, Point examineCursor = default)
     {
         for (int y = 0; y < dungeon.Height; y++)
         for (int x = 0; x < dungeon.Width; x++)
@@ -88,6 +90,13 @@ public sealed class GameRenderer
                 DrawRectangle(new Rectangle(monster.Position.X * tileSize,
                     monster.Position.Y * tileSize - 2, width, 2), Color.Red);
             }
+        }
+        
+        // Draw examine cursor as a highlight box
+        if (examineMode && dungeon.IsVisible(examineCursor))
+        {
+            DrawRectangle(new Rectangle(examineCursor.X * tileSize, examineCursor.Y * tileSize, tileSize, tileSize), 
+                new Color(200, 200, 100, 80));
         }
     }
 
@@ -163,7 +172,8 @@ public sealed class GameRenderer
     }
 
     private void DrawScreen(ScreenKind screen, int depth, RunStats? stats, int titleMenuIndex = 0,
-        string seedInput = "", int historyScrollOffset = 0, IReadOnlyList<RunRecord>? historyRecords = null, int? savedSeed = null, int pauseMenuIndex = 0)
+        string seedInput = "", int historyScrollOffset = 0, IReadOnlyList<RunRecord>? historyRecords = null, int? savedSeed = null, 
+        int pauseMenuIndex = 0, bool canContinue = false, int? rankPosition = null, int? totalRuns = null, int? seed = null)
     {
         DrawRectangle(new Rectangle(0, 0, 960, 664), new Color(5, 7, 14, 235));
         string title = screen switch { ScreenKind.Title => "ROGUELIKE", ScreenKind.Paused => "PAUSED",
@@ -171,20 +181,27 @@ public sealed class GameRenderer
             ScreenKind.RunHistory => "RUN HISTORY", _ => string.Empty };
         text.DrawString(title, new Point(360, 100), Color.Gold, 2, true);
         
-        if (screen == ScreenKind.Title) DrawTitleMenu(titleMenuIndex, savedSeed);
-        else if (screen == ScreenKind.GameOver && stats is not null) DrawGameOver(stats);
+        if (screen == ScreenKind.Title) DrawTitleMenu(titleMenuIndex, savedSeed, canContinue);
+        else if (screen == ScreenKind.GameOver && stats is not null) DrawGameOver(stats, rankPosition, totalRuns, seed);
         else if (screen == ScreenKind.Paused) DrawPauseMenu(pauseMenuIndex);
         else if (screen == ScreenKind.Help) DrawHelp();
         else if (screen == ScreenKind.SeedEntry) DrawSeedEntry(seedInput);
         else if (screen == ScreenKind.RunHistory) DrawRunHistory(historyRecords ?? Array.Empty<RunRecord>(), historyScrollOffset);
     }
 
-    private void DrawTitleMenu(int titleMenuIndex, int? savedSeed = null)
+    private void DrawTitleMenu(int titleMenuIndex, int? savedSeed = null, bool canContinue = false)
     {
         string[] items = { "Continue", "New Run", "New Run With Seed", "Run History", "Help", "Quit" };
         for (int i = 0; i < items.Length; i++)
         {
-            Color color = i == titleMenuIndex ? Color.White : Color.LightGray;
+            Color color;
+            if (i == 0 && !canContinue)
+                color = Color.DarkGray; // Disabled
+            else if (i == titleMenuIndex)
+                color = Color.White; // Selected
+            else
+                color = Color.LightGray; // Unselected
+            
             text.DrawString(items[i], new Point(400, 150 + i * 20), color);
         }
         // Show seed if a run is saved
@@ -192,12 +209,24 @@ public sealed class GameRenderer
             text.DrawString($"  Seed: {savedSeed}", new Point(450, 150), Color.LightGray);
     }
 
-    private void DrawGameOver(RunStats stats)
+    private void DrawGameOver(RunStats stats, int? rankPosition = null, int? totalRuns = null, int? seed = null)
     {
         text.DrawString($"Cause: {stats.CauseOfDeath ?? "unknown"}", new Point(330, 150), Color.White);
         text.DrawString($"Depth {stats.MaxDepth}", new Point(330, 168), Color.White);
         text.DrawString($"Turns {stats.TurnsSurvived}  Kills {stats.MonstersSlain}", new Point(330, 186), Color.White);
         text.DrawString($"Picked up {stats.ItemsPickedUp}  Damage dealt {stats.DamageDealt}", new Point(330, 204), Color.White);
+        
+        // Rank line
+        if (rankPosition.HasValue && totalRuns.HasValue)
+        {
+            string seedStr = seed.HasValue ? $"  Seed: {seed}" : "";
+            text.DrawString($"RANK #{rankPosition} OF {totalRuns}{seedStr}", new Point(300, 222), Color.Gold);
+        }
+        else
+        {
+            text.DrawString("RUN NOT RECORDED", new Point(350, 222), Color.Yellow);
+        }
+        
         text.DrawString("R restart   Esc title", new Point(370, 238), Color.Gold);
     }
 

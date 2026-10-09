@@ -15,6 +15,7 @@ public sealed class GameSession
     private bool historyRecorded;
     private string seedInput = string.Empty;
     private int historyScrollOffset = 0;
+    private Point examineCursor = Point.Zero;
     /// <summary>Creates a session with a fresh run.</summary>
     public GameSession(int seed, int width = 60, int height = 34, ContentDatabase? content = null,
         ISaveStore? saveStore = null, IRunHistoryStore? historyStore = null, string? saveDirectory = null)
@@ -39,6 +40,35 @@ public sealed class GameSession
     public string SeedInput => seedInput;
     /// <summary>Gets the run history scroll offset.</summary>
     public int HistoryScrollOffset => historyScrollOffset;
+    /// <summary>Gets the rank position if the run is recorded in history.</summary>
+    public int? RankPosition { get; private set; }
+    /// <summary>Gets the total number of runs in history.</summary>
+    public int? TotalRuns { get; private set; }
+    /// <summary>Gets the examine cursor position.</summary>
+    public Point ExamineCursor => examineCursor;
+    /// <summary>Gets the description of what's at the examined position.</summary>
+    public string GetExamineDescription(Point position)
+    {
+        if (!State.Dungeon.IsVisible(position)) return string.Empty;
+        
+        // Check for monster
+        MonsterActor? monster = State.Monsters.FirstOrDefault(m => m.IsAlive && m.Position == position);
+        if (monster is not null) return $"{monster.Name} HP {monster.Hp}/{monster.MaxHp}";
+        
+        // Check for item
+        FloorItem? item = State.FloorItems.FirstOrDefault(fi => fi.Position == position);
+        if (item is not null) return item.Item.Definition.Name;
+        
+        // Check terrain
+        if (position == State.Dungeon.StairsPosition) return "STAIRS";
+        TileType tile = State.Dungeon[position];
+        return tile switch
+        {
+            TileType.Wall => "WALL",
+            TileType.Floor => "FLOOR",
+            _ => "UNKNOWN"
+        };
+    }
     public bool HasValidSave
     {
         get
@@ -143,10 +173,14 @@ public sealed class GameSession
             case UiCommandKind.Cancel:
                 if (Screens.Screen == ScreenKind.GameOver) Screens.Title();
                 else if (Screens.Screen is ScreenKind.SeedEntry or ScreenKind.RunHistory) Screens.ReturnToTitle();
+                else if (Screens.Overlay == UiOverlay.Examine) Screens.ExitExamine();
                 else if (!Screens.CloseOverlay()) Screens.ReturnToTitle();
                 break;
             case UiCommandKind.Inventory:
                 if (Screens.ToggleInventory()) InventoryCursor = 0;
+                break;
+            case UiCommandKind.Examine:
+                if (Screens.EnterExamine()) examineCursor = State.Player.Position;
                 break;
             case UiCommandKind.Drop:
                 if (InventoryCursor < State.Player.Inventory.Items.Count) State.Process(GameAction.DropItem(InventoryCursor));
@@ -163,7 +197,17 @@ public sealed class GameSession
                 if (Screens.ConfirmRestart()) RestartImmediate();
                 break;
             case UiCommandKind.CancelRestart: Screens.CancelRestart(); break;
-            case UiCommandKind.Move: ProcessAndAutosave(GameAction.Move(command.Direction)); break;
+            case UiCommandKind.Move:
+                if (Screens.Overlay == UiOverlay.Examine)
+                {
+                    // Move examine cursor within visible bounds
+                    Point newPos = examineCursor + command.Direction;
+                    if (State.Dungeon.InBounds(newPos) && State.Dungeon.IsVisible(newPos))
+                        examineCursor = newPos;
+                }
+                else
+                    ProcessAndAutosave(GameAction.Move(command.Direction));
+                break;
             case UiCommandKind.Wait: ProcessAndAutosave(GameAction.Wait); break;
             case UiCommandKind.SeedDigit:
                 if (Screens.Screen == ScreenKind.SeedEntry && seedInput.Length < 9)
@@ -281,6 +325,13 @@ public sealed class GameSession
         historyStore.Append(new RunRecord(Guid.NewGuid().ToString("N"), State.Seed, DateTime.UtcNow,
             State.RunStats.MaxDepth, State.Player.Level, State.RunStats.TurnsSurvived,
             State.RunStats.MonstersSlain, cause, content.ContentHash));
+        
+        // Find rank in history
+        var allRecords = historyStore.Read();
+        var ranked = RunRanking.Top(allRecords).ToList();
+        TotalRuns = allRecords.Count;
+        int pos = ranked.FindIndex(r => r.Seed == State.Seed);
+        RankPosition = pos >= 0 ? pos + 1 : null; // 1-indexed, or null if not in top 10
     }
 
     private void ProcessAndAutosave(GameAction action)

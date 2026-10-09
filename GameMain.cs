@@ -95,7 +95,9 @@ public sealed class GameMain : Game
                 session.Screens.Overlay == UiOverlay.Inventory, session.InventoryCursor, state.MessageLog, state.TurnNumber,
                 session.Screens.Screen, state.RunStats, session.Screens.Overlay == UiOverlay.RestartConfirmation,
                 session.Screens.TitleMenuIndex, session.SeedInput, session.HistoryScrollOffset, historyRecords, savedSeed,
-                session.Screens.MenuIndex);
+                session.Screens.MenuIndex, session.HasValidSave, session.RankPosition, session.TotalRuns, state.Seed,
+                session.Screens.Overlay == UiOverlay.Examine, session.ExamineCursor, 
+                session.Screens.Overlay == UiOverlay.Examine ? session.GetExamineDescription(session.ExamineCursor) : "");
         }
         base.Draw(gameTime);
     }
@@ -105,7 +107,7 @@ public sealed class GameMain : Game
         HashSet<string> keys = new(StringComparer.OrdinalIgnoreCase);
         Keys[] candidates = { Keys.Up, Keys.Down, Keys.Left, Keys.Right, Keys.W, Keys.A, Keys.S, Keys.D,
             Keys.NumPad8, Keys.NumPad2, Keys.NumPad4, Keys.NumPad6, Keys.Space, Keys.Enter, Keys.Escape,
-            Keys.I, Keys.R, Keys.H, Keys.D0, Keys.D1, Keys.D2, Keys.D3, Keys.D4, Keys.D5, Keys.D6, Keys.D7, Keys.D8, Keys.D9,
+            Keys.I, Keys.R, Keys.H, Keys.X, Keys.D0, Keys.D1, Keys.D2, Keys.D3, Keys.D4, Keys.D5, Keys.D6, Keys.D7, Keys.D8, Keys.D9,
             Keys.NumPad0, Keys.NumPad1, Keys.NumPad2, Keys.NumPad3, Keys.NumPad4, Keys.NumPad5, Keys.NumPad6, Keys.NumPad7, Keys.NumPad8, Keys.NumPad9,
             Keys.Y, Keys.N, Keys.Back };
         foreach (Keys key in candidates)

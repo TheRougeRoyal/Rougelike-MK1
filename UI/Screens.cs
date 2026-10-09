@@ -21,10 +21,10 @@ public sealed class ScreenStateMachine
     public int MenuIndex { get; private set; }
     /// <summary>Gets the selected title-menu item.</summary>
     public int TitleMenuIndex => titleMenuIndex;
-    /// <summary>Starts a run only from the title.</summary>
+    /// <summary>Starts a run only from the title or seed entry.</summary>
     public bool Start()
     {
-        if (Screen != ScreenKind.Title) return false;
+        if (Screen is not (ScreenKind.Title or ScreenKind.SeedEntry)) return false;
         Screen = ScreenKind.Playing;
         return true;
     }
@@ -66,10 +66,10 @@ public sealed class ScreenStateMachine
         Screen = ScreenKind.GameOver;
         return true;
     }
-    /// <summary>Returns to the title from game over.</summary>
+    /// <summary>Returns to the title from game over or paused screen.</summary>
     public bool Title()
     {
-        if (Screen != ScreenKind.GameOver) return false;
+        if (Screen is not (ScreenKind.GameOver or ScreenKind.Paused)) return false;
         Overlay = UiOverlay.None;
         Screen = ScreenKind.Title;
         return true;
@@ -85,6 +85,22 @@ public sealed class ScreenStateMachine
     public bool CloseOverlay()
     {
         if (Screen != ScreenKind.Playing || Overlay == UiOverlay.None) return false;
+        Overlay = UiOverlay.None;
+        return true;
+    }
+
+    /// <summary>Opens examine mode on the playing screen.</summary>
+    public bool EnterExamine()
+    {
+        if (Screen != ScreenKind.Playing || Overlay != UiOverlay.None) return false;
+        Overlay = UiOverlay.Examine;
+        return true;
+    }
+
+    /// <summary>Exits examine mode only when it is active.</summary>
+    public bool ExitExamine()
+    {
+        if (Screen != ScreenKind.Playing || Overlay != UiOverlay.Examine) return false;
         Overlay = UiOverlay.None;
         return true;
     }
@@ -141,7 +157,8 @@ public sealed class ScreenStateMachine
 
     public bool RequestAbandon()
     {
-        if (Screen != ScreenKind.Playing || Overlay != UiOverlay.None) return false;
+        if (Screen == ScreenKind.Playing && Overlay != UiOverlay.None) return false;
+        if (Screen is not (ScreenKind.Playing or ScreenKind.Paused)) return false;
         Overlay = UiOverlay.AbandonConfirmation;
         return true;
     }

@@ -8,7 +8,7 @@ public enum UiCommandKind
     None, Move, Wait, Accept, Cancel, Quit, Start, Help, CloseHelp, Pause, Resume, Restart,
     ConfirmRestart, CancelRestart, Inventory, Drop, UnequipWeapon, UnequipArmor, MenuUp, MenuDown,
     NewRun, NewRunWithSeed, RunHistory, SaveAndQuit, AbandonRun, Continue, ConfirmAbandon, CancelAbandon,
-    SeedDigit, SeedBackspace
+    SeedDigit, SeedBackspace, Examine
 }
 
 /// <summary>A keyboard-independent UI command.</summary>
@@ -137,7 +137,14 @@ public sealed class InputMapper
                 if (pressed("Escape")) return new UiCommand(UiCommandKind.Pause);
                 if (pressed("I")) return new UiCommand(UiCommandKind.Inventory);
                 if (pressed("R")) return new UiCommand(UiCommandKind.Restart);
+                if (pressed("X")) return new UiCommand(UiCommandKind.Examine);
                 if (pressed("Space")) return new UiCommand(UiCommandKind.Wait);
+            }
+            else if (overlay == UiOverlay.Examine)
+            {
+                if (pressed("Escape")) return new UiCommand(UiCommandKind.Cancel);
+                foreach (var direction in directions)
+                    if (pressed(direction.Key)) return new UiCommand(UiCommandKind.Move, direction.Value);
             }
         }
         return new UiCommand(UiCommandKind.None);
