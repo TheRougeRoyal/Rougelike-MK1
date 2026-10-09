@@ -319,8 +319,8 @@ public sealed class TitleMenuRoundTests
         Point measured = BitmapFont.Measure(truncated, scale: 1);
         int renderedWidth = measured.X;
         
-        // Get available HUD text width: standard game is 60 width * 12 tileSize
-        int hudTextWidth = GameRenderer.GetHudTextWidth(60, 12);
+        // Get available HUD text width using real game layout constants
+        int hudTextWidth = GameRenderer.GetHudTextWidth(GameLayout.MapWidth, GameLayout.TileSize);
         
         // Assert rendered width fits within the HUD text width
         Assert.True(renderedWidth <= hudTextWidth, 
@@ -336,6 +336,7 @@ public sealed class TitleMenuRoundTests
         
         // Test multiple examine positions
         Point testPos = session.State.Player.Position;
+        int hudTextWidth = GameRenderer.GetHudTextWidth(GameLayout.MapWidth, GameLayout.TileSize);
         
         for (int i = 0; i < 5; i++)
         {
@@ -348,7 +349,6 @@ public sealed class TitleMenuRoundTests
             string truncated = TextLayout.Truncate(description, 70);
             Point measured = BitmapFont.Measure(truncated, scale: 1);
             
-            int hudTextWidth = GameRenderer.GetHudTextWidth(60, 12);
             Assert.True(measured.X <= hudTextWidth,
                 $"Description '{truncated}' rendered width {measured.X}px exceeds HUD text width {hudTextWidth}px");
         }
@@ -364,5 +364,36 @@ public sealed class TitleMenuRoundTests
         session.Execute(new UiCommand(UiCommandKind.Cancel));
         
         Assert.Equal(ScreenKind.Title, session.Screens.Screen);
+    }
+
+    [Fact]
+    public void WindowPreferredBackBufferWidthMatchesGameLayout()
+    {
+        // Verify window dimensions match GameLayout constants
+        // Calculation: MapWidth * TileSize = 60 * 16 = 960px
+        int expectedWidth = GameLayout.MapWidth * GameLayout.TileSize;
+        Assert.Equal(960, expectedWidth);
+        
+        // This is a constant check: the window in GameMain uses the same formula
+        // (PreferredBackBufferWidth = GameLayout.MapWidth * GameLayout.TileSize)
+    }
+
+    [Fact]
+    public void ExamineDescriptionFitsWithRealWidth()
+    {
+        // Verify that 70-character truncation fits within the real window width
+        // Real width: GameLayout.MapWidth * GameLayout.TileSize = 60 * 16 = 960 pixels
+        // HUD text width: 960 - HudLeftMargin = 960 - 8 = 952 pixels
+        
+        int windowWidth = GameLayout.MapWidth * GameLayout.TileSize;
+        int hudTextWidth = GameRenderer.GetHudTextWidth(GameLayout.MapWidth, GameLayout.TileSize);
+        
+        Assert.Equal(960, windowWidth);
+        Assert.Equal(952, hudTextWidth);
+        
+        // 70 characters at scale 1: 70 * 6 (advance) = 420 pixels
+        int maxRenderedWidth = 70 * BitmapFont.GlyphAdvance;
+        Assert.True(maxRenderedWidth <= hudTextWidth,
+            $"70-char string at {maxRenderedWidth}px exceeds HUD width {hudTextWidth}px");
     }
 }

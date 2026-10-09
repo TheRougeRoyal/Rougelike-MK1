@@ -10,10 +10,6 @@ namespace Roguelike;
 /// <summary>MonoGame application glue for the UI state machine and headless game state.</summary>
 public sealed class GameMain : Game
 {
-    private const int MapWidth = 60;
-    private const int MapHeight = 34;
-    private const int TileSize = 16;
-    private const int HudHeight = 120;
     private readonly GraphicsDeviceManager graphics;
     private readonly int seed;
     private readonly ContentDatabase content;
@@ -32,8 +28,8 @@ public sealed class GameMain : Game
         this.saveDirectory = saveDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Roguelike");
         graphics = new GraphicsDeviceManager(this)
         {
-            PreferredBackBufferWidth = MapWidth * TileSize,
-            PreferredBackBufferHeight = MapHeight * TileSize + HudHeight
+            PreferredBackBufferWidth = GameLayout.MapWidth * GameLayout.TileSize,
+            PreferredBackBufferHeight = GameLayout.MapHeight * GameLayout.TileSize + GameLayout.HudHeight
         };
         IsMouseVisible = false;
         Window.AllowUserResizing = false;
@@ -42,7 +38,7 @@ public sealed class GameMain : Game
     /// <inheritdoc />
     protected override void Initialize()
     {
-        session = new GameSession(seed, MapWidth, MapHeight, content, new Persistence.FileSaveStore(saveDirectory),
+        session = new GameSession(seed, GameLayout.MapWidth, GameLayout.MapHeight, content, new Persistence.FileSaveStore(saveDirectory),
             new Runs.FileRunHistoryStore(saveDirectory));
         Window.Title = $"Roguelike - Seed {seed}";
         base.Initialize();
@@ -52,7 +48,7 @@ public sealed class GameMain : Game
     protected override void LoadContent()
     {
         spriteBatch = new SpriteBatch(GraphicsDevice);
-        renderer = new GameRenderer(GraphicsDevice, spriteBatch, TileSize, HudHeight);
+        renderer = new GameRenderer(GraphicsDevice, spriteBatch, GameLayout.TileSize, GameLayout.HudHeight);
     }
 
     /// <inheritdoc />
