@@ -13,6 +13,8 @@ public sealed class GameSession
     private readonly ISaveStore saveStore;
     private readonly IRunHistoryStore historyStore;
     private bool historyRecorded;
+    private string seedInput = string.Empty;
+    private int historyScrollOffset = 0;
     /// <summary>Creates a session with a fresh run.</summary>
     public GameSession(int seed, int width = 60, int height = 34, ContentDatabase? content = null,
         ISaveStore? saveStore = null, IRunHistoryStore? historyStore = null, string? saveDirectory = null)
@@ -33,6 +35,10 @@ public sealed class GameSession
     public int InventoryCursor { get; private set; }
     /// <summary>Gets whether the UI requested application exit.</summary>
     public bool QuitRequested { get; private set; }
+    /// <summary>Gets the current seed input text.</summary>
+    public string SeedInput => seedInput;
+    /// <summary>Gets the run history scroll offset.</summary>
+    public int HistoryScrollOffset => historyScrollOffset;
     public bool HasValidSave
     {
         get
@@ -49,6 +55,10 @@ public sealed class GameSession
         switch (command.Kind)
         {
             case UiCommandKind.Quit: QuitRequested = true; break;
+            case UiCommandKind.Accept:
+                if (Screens.Screen == ScreenKind.Title) HandleTitleMenuAccept();
+                else Accept();
+                break;
             case UiCommandKind.Start:
                 if (Screens.Screen == ScreenKind.Title)
                 {
@@ -58,7 +68,7 @@ public sealed class GameSession
                 }
                 break;
             case UiCommandKind.NewRun:
-                if (Screens.Screen == ScreenKind.Title) StartNewRun(State.Seed);
+                if (Screens.Screen == ScreenKind.Title) StartNewRun(Random.Shared.Next());
                 break;
             case UiCommandKind.Continue:
                 if (Screens.Screen == ScreenKind.Title)
@@ -121,14 +131,15 @@ public sealed class GameSession
             case UiCommandKind.Resume: Screens.Resume(); break;
             case UiCommandKind.MenuUp:
                 if (Screens.Overlay == UiOverlay.Inventory) InventoryCursor = Math.Max(0, InventoryCursor - 1);
+                else if (Screens.Screen == ScreenKind.RunHistory) historyScrollOffset = Math.Max(0, historyScrollOffset - 1);
                 else Screens.MoveMenu(-1);
                 break;
             case UiCommandKind.MenuDown:
                 if (Screens.Overlay == UiOverlay.Inventory)
                     InventoryCursor = Math.Min(Math.Max(0, State.Player.Inventory.Items.Count - 1), InventoryCursor + 1);
+                else if (Screens.Screen == ScreenKind.RunHistory) historyScrollOffset = Math.Max(0, historyScrollOffset + 1);
                 else Screens.MoveMenu(1);
                 break;
-            case UiCommandKind.Accept: Accept(); break;
             case UiCommandKind.Cancel:
                 if (Screens.Screen == ScreenKind.GameOver) Screens.Title();
                 else if (Screens.Screen is ScreenKind.SeedEntry or ScreenKind.RunHistory) Screens.ReturnToTitle();
@@ -154,22 +165,85 @@ public sealed class GameSession
             case UiCommandKind.CancelRestart: Screens.CancelRestart(); break;
             case UiCommandKind.Move: ProcessAndAutosave(GameAction.Move(command.Direction)); break;
             case UiCommandKind.Wait: ProcessAndAutosave(GameAction.Wait); break;
+            case UiCommandKind.SeedDigit:
+                if (Screens.Screen == ScreenKind.SeedEntry && seedInput.Length < 9)
+                    seedInput += command.Digit;
+                break;
+            case UiCommandKind.SeedBackspace:
+                if (Screens.Screen == ScreenKind.SeedEntry && seedInput.Length > 0)
+                    seedInput = seedInput[..^1];
+                break;
             case UiCommandKind.None: break;
             default: throw new InvalidOperationException($"Unhandled UI command: {command.Kind}");
         }
         FinalizeDeath(wasDead, command.Kind);
     }
 
+    private void HandleTitleMenuAccept()
+    {
+        int menuIndex = Screens.TitleMenuIndex;
+        switch (menuIndex)
+        {
+            case 0: // Continue
+                if (!HasValidSave)
+                {
+                    State.SetFeedback("No saved run to continue.", Microsoft.Xna.Framework.Color.Yellow);
+                    return;
+                }
+                {
+                    LoadResult result = GameStatePersistence.Load(saveStore, content.ContentHash, content);
+                    if (result.State is not null && result.State.Status == GameStatus.Playing)
+                    {
+                        State = result.State;
+                        historyRecorded = false;
+                        Screens.Start();
+                    }
+                    else if (result.Reason is not null)
+                        State.SetFeedback(result.Reason, Microsoft.Xna.Framework.Color.Yellow);
+                }
+                break;
+            case 1: // New Run
+                StartNewRun(Random.Shared.Next());
+                break;
+            case 2: // New Run With Seed
+                seedInput = string.Empty;
+                Screens.ShowSeedEntry();
+                break;
+            case 3: // Run History
+                historyScrollOffset = 0;
+                Screens.ShowRunHistory();
+                break;
+            case 4: // Help
+                Screens.ShowHelp();
+                break;
+            case 5: // Quit
+                QuitRequested = true;
+                break;
+        }
+    }
+
     private void Accept()
     {
-        if (Screens.Screen == ScreenKind.Paused)
+        if (Screens.Screen == ScreenKind.SeedEntry)
+        {
+            if (SeedParser.TryParse(seedInput, out int seed, out string error))
+            {
+                StartNewRun(seed);
+            }
+            else
+            {
+                State.SetFeedback(error, Microsoft.Xna.Framework.Color.Yellow);
+            }
+        }
+        else if (Screens.Screen == ScreenKind.Paused)
         {
             switch (Screens.MenuIndex)
             {
                 case 0: Screens.Resume(); break;
-                case 1: RestartImmediate(); break;
-                case 2: Screens.ShowHelp(); break;
-                case 3: QuitRequested = true; break;
+                case 1: SaveAndQuit(); break;
+                case 2: Screens.RequestAbandon(); break;
+                case 3: Screens.ShowHelp(); break;
+                case 4: Screens.Title(); break;
             }
         }
         else if (Screens.Overlay == UiOverlay.Inventory && InventoryCursor < State.Player.Inventory.Items.Count)

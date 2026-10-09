@@ -2,6 +2,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Roguelike.Content;
+using Roguelike.Persistence;
 
 
 namespace Roguelike;
@@ -75,10 +76,26 @@ public sealed class GameMain : Game
         if (renderer is not null && session is not null)
         {
             GameState state = session.State;
+            var historyRecords = session.Screens.Screen == ScreenKind.RunHistory
+                ? new Runs.FileRunHistoryStore(saveDirectory).Read()
+                : Array.Empty<Runs.RunRecord>();
+            
+            int? savedSeed = null;
+            if (session.Screens.Screen == ScreenKind.Title && session.HasValidSave)
+            {
+                LoadResult result = Persistence.GameStatePersistence.Load(
+                    new Persistence.FileSaveStore(saveDirectory), 
+                    content.ContentHash, content);
+                if (result.State is not null)
+                    savedSeed = result.State.Seed;
+            }
+            
             renderer.Draw(state.Dungeon, state.Player, state.Monsters, state.Depth, state.Player.Level,
                 state.Player.Experience, state.Message, state.FeedbackTint, state.FeedbackActor, state.FloorItems,
                 session.Screens.Overlay == UiOverlay.Inventory, session.InventoryCursor, state.MessageLog, state.TurnNumber,
-                session.Screens.Screen, state.RunStats, session.Screens.Overlay == UiOverlay.RestartConfirmation);
+                session.Screens.Screen, state.RunStats, session.Screens.Overlay == UiOverlay.RestartConfirmation,
+                session.Screens.TitleMenuIndex, session.SeedInput, session.HistoryScrollOffset, historyRecords, savedSeed,
+                session.Screens.MenuIndex);
         }
         base.Draw(gameTime);
     }
@@ -88,14 +105,19 @@ public sealed class GameMain : Game
         HashSet<string> keys = new(StringComparer.OrdinalIgnoreCase);
         Keys[] candidates = { Keys.Up, Keys.Down, Keys.Left, Keys.Right, Keys.W, Keys.A, Keys.S, Keys.D,
             Keys.NumPad8, Keys.NumPad2, Keys.NumPad4, Keys.NumPad6, Keys.Space, Keys.Enter, Keys.Escape,
-            Keys.I, Keys.R, Keys.H, Keys.D1, Keys.D2, Keys.Y, Keys.N };
+            Keys.I, Keys.R, Keys.H, Keys.D0, Keys.D1, Keys.D2, Keys.D3, Keys.D4, Keys.D5, Keys.D6, Keys.D7, Keys.D8, Keys.D9,
+            Keys.NumPad0, Keys.NumPad1, Keys.NumPad2, Keys.NumPad3, Keys.NumPad4, Keys.NumPad5, Keys.NumPad6, Keys.NumPad7, Keys.NumPad8, Keys.NumPad9,
+            Keys.Y, Keys.N, Keys.Back };
         foreach (Keys key in candidates)
             if (keyboard.IsKeyDown(key))
                 keys.Add(key switch
                 {
-                    Keys.D1 => "D1", Keys.D2 => "D2",
-                    Keys.NumPad8 => "NumPad8", Keys.NumPad2 => "NumPad2",
-                    Keys.NumPad4 => "NumPad4", Keys.NumPad6 => "NumPad6",
+                    Keys.D0 => "0", Keys.D1 => "1", Keys.D2 => "2", Keys.D3 => "3", Keys.D4 => "4",
+                    Keys.D5 => "5", Keys.D6 => "6", Keys.D7 => "7", Keys.D8 => "8", Keys.D9 => "9",
+                    Keys.NumPad0 => "NumPad0", Keys.NumPad1 => "NumPad1", Keys.NumPad2 => "NumPad2", Keys.NumPad3 => "NumPad3",
+                    Keys.NumPad4 => "NumPad4", Keys.NumPad5 => "NumPad5", Keys.NumPad6 => "NumPad6", Keys.NumPad7 => "NumPad7",
+                    Keys.NumPad8 => "NumPad8", Keys.NumPad9 => "NumPad9",
+                    Keys.Back => "BackSpace",
                     _ => key.ToString()
                 });
         return keys;

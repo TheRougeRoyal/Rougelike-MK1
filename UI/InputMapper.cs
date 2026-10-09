@@ -7,14 +7,19 @@ public enum UiCommandKind
 {
     None, Move, Wait, Accept, Cancel, Quit, Start, Help, CloseHelp, Pause, Resume, Restart,
     ConfirmRestart, CancelRestart, Inventory, Drop, UnequipWeapon, UnequipArmor, MenuUp, MenuDown,
-    NewRun, NewRunWithSeed, RunHistory, SaveAndQuit, AbandonRun, Continue, ConfirmAbandon, CancelAbandon
+    NewRun, NewRunWithSeed, RunHistory, SaveAndQuit, AbandonRun, Continue, ConfirmAbandon, CancelAbandon,
+    SeedDigit, SeedBackspace
 }
 
 /// <summary>A keyboard-independent UI command.</summary>
-public readonly record struct UiCommand(UiCommandKind Kind, Point Direction)
+public readonly record struct UiCommand(UiCommandKind Kind, Point Direction, char Digit = '\0')
 {
     /// <summary>Creates a non-directional command.</summary>
-    public UiCommand(UiCommandKind kind) : this(kind, Point.Zero) { }
+    public UiCommand(UiCommandKind kind) : this(kind, Point.Zero, '\0') { }
+    /// <summary>Creates a directional command.</summary>
+    public UiCommand(UiCommandKind kind, Point direction) : this(kind, direction, '\0') { }
+    /// <summary>Creates a seed digit command.</summary>
+    public UiCommand(UiCommandKind kind, char digit) : this(kind, Point.Zero, digit) { }
 }
 
 /// <summary>Maps plain key names and elapsed time into UI commands.</summary>
@@ -72,13 +77,30 @@ public sealed class InputMapper
         {
             if (pressed("Up") || pressed("W")) return new UiCommand(UiCommandKind.MenuUp);
             if (pressed("Down") || pressed("S")) return new UiCommand(UiCommandKind.MenuDown);
-            if (pressed("Enter")) return new UiCommand(UiCommandKind.Start);
-            if (pressed("H")) return new UiCommand(UiCommandKind.Help);
+            if (pressed("Enter")) return new UiCommand(UiCommandKind.Accept);
             if (pressed("Escape")) return new UiCommand(UiCommandKind.Quit);
         }
         else if (screen == ScreenKind.Help)
         {
             if (pressed("Escape") || pressed("Enter")) return new UiCommand(UiCommandKind.CloseHelp);
+        }
+        else if (screen == ScreenKind.SeedEntry)
+        {
+            if (pressed("Escape")) return new UiCommand(UiCommandKind.Cancel);
+            if (pressed("Enter")) return new UiCommand(UiCommandKind.Accept);
+            if (pressed("BackSpace")) return new UiCommand(UiCommandKind.SeedBackspace);
+            // Digits from top row
+            for (char digit = '0'; digit <= '9'; digit++)
+                if (pressed(digit.ToString())) return new UiCommand(UiCommandKind.SeedDigit, digit);
+            // Digits from numpad
+            for (char digit = '0'; digit <= '9'; digit++)
+                if (pressed($"NumPad{digit}")) return new UiCommand(UiCommandKind.SeedDigit, digit);
+        }
+        else if (screen == ScreenKind.RunHistory)
+        {
+            if (pressed("Escape")) return new UiCommand(UiCommandKind.Cancel);
+            if (pressed("Up") || pressed("W")) return new UiCommand(UiCommandKind.MenuUp);
+            if (pressed("Down") || pressed("S")) return new UiCommand(UiCommandKind.MenuDown);
         }
         else if (screen == ScreenKind.Paused)
         {

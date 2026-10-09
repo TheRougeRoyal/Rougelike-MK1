@@ -2,6 +2,8 @@ namespace Roguelike;
 
 /// <summary>UI-layer screens.</summary>
 public enum ScreenKind { Title, Playing, Paused, GameOver, Help, SeedEntry, RunHistory }
+/// <summary>Menu item selections on the title screen.</summary>
+public enum TitleMenuItem { Continue, NewRun, NewRunWithSeed, RunHistory, Help, Quit }
 /// <summary>Whether the playing screen has an overlay.</summary>
 public enum UiOverlay { None, Inventory, Examine, RestartConfirmation, AbandonConfirmation }
 
@@ -9,12 +11,16 @@ public enum UiOverlay { None, Inventory, Examine, RestartConfirmation, AbandonCo
 public sealed class ScreenStateMachine
 {
     private ScreenKind helpReturnScreen;
+    private int titleMenuIndex = 0;
+    
     /// <summary>Gets the current screen.</summary>
     public ScreenKind Screen { get; private set; } = ScreenKind.Title;
     /// <summary>Gets the active playing overlay.</summary>
     public UiOverlay Overlay { get; private set; }
-    /// <summary>Gets the selected paused-menu item.</summary>
+    /// <summary>Gets the selected paused-menu item (0-4).</summary>
     public int MenuIndex { get; private set; }
+    /// <summary>Gets the selected title-menu item.</summary>
+    public int TitleMenuIndex => titleMenuIndex;
     /// <summary>Starts a run only from the title.</summary>
     public bool Start()
     {
@@ -147,12 +153,16 @@ public sealed class ScreenStateMachine
         Screen = ScreenKind.Title;
         return true;
     }
-    /// <summary>Moves the paused-menu selection.</summary>
+    /// <summary>Moves the title or paused-menu selection.</summary>
     public bool MoveMenu(int delta)
     {
+        if (Screen == ScreenKind.Title)
+        {
+            titleMenuIndex = (titleMenuIndex + delta + 6) % 6;
+            return true;
+        }
         if (Screen != ScreenKind.Paused) return false;
-        int count = Screen == ScreenKind.Title ? 6 : 4;
-        MenuIndex = (MenuIndex + delta + count) % count;
+        MenuIndex = (MenuIndex + delta + 5) % 5;
         return true;
     }
 }

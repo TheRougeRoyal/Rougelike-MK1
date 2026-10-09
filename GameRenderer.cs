@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Roguelike.Runs;
 
 namespace Roguelike;
 
@@ -31,14 +32,15 @@ public sealed class GameRenderer
         Actor? feedbackActor = null, IReadOnlyList<FloorItem>? floorItems = null,
         bool inventoryOpen = false, int inventoryCursor = -1, MessageLog? messageLog = null,
         int turnNumber = 0, ScreenKind screen = ScreenKind.Playing, RunStats? stats = null,
-        bool restartConfirmation = false)
+        bool restartConfirmation = false, int titleMenuIndex = 0, string seedInput = "",
+        int historyScrollOffset = 0, IReadOnlyList<RunRecord>? historyRecords = null, int? savedSeed = null, int pauseMenuIndex = 0)
     {
         spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         DrawMap(dungeon, player, monsters, floorItems, feedbackActor);
         DrawHud(dungeon, player, depth, level, experience, messageLog, turnNumber, stats);
         if (inventoryOpen) DrawInventory(player, inventoryCursor);
         if (restartConfirmation) DrawRestartConfirmation(dungeon.Width * tileSize, dungeon.Height * tileSize);
-        if (screen != ScreenKind.Playing) DrawScreen(screen, depth, stats);
+        if (screen != ScreenKind.Playing) DrawScreen(screen, depth, stats, titleMenuIndex, seedInput, historyScrollOffset, historyRecords, savedSeed, pauseMenuIndex);
         spriteBatch.End();
     }
 
@@ -160,37 +162,114 @@ public sealed class GameRenderer
             new Point(60, 475), Color.LightGray);
     }
 
-    private void DrawScreen(ScreenKind screen, int depth, RunStats? stats)
+    private void DrawScreen(ScreenKind screen, int depth, RunStats? stats, int titleMenuIndex = 0,
+        string seedInput = "", int historyScrollOffset = 0, IReadOnlyList<RunRecord>? historyRecords = null, int? savedSeed = null, int pauseMenuIndex = 0)
     {
         DrawRectangle(new Rectangle(0, 0, 960, 664), new Color(5, 7, 14, 235));
         string title = screen switch { ScreenKind.Title => "ROGUELIKE", ScreenKind.Paused => "PAUSED",
-            ScreenKind.GameOver => "GAME OVER", ScreenKind.Help => "HELP", _ => string.Empty };
+            ScreenKind.GameOver => "GAME OVER", ScreenKind.Help => "HELP", ScreenKind.SeedEntry => "ENTER SEED",
+            ScreenKind.RunHistory => "RUN HISTORY", _ => string.Empty };
         text.DrawString(title, new Point(360, 100), Color.Gold, 2, true);
-        if (screen == ScreenKind.Title)
+        
+        if (screen == ScreenKind.Title) DrawTitleMenu(titleMenuIndex, savedSeed);
+        else if (screen == ScreenKind.GameOver && stats is not null) DrawGameOver(stats);
+        else if (screen == ScreenKind.Paused) DrawPauseMenu(pauseMenuIndex);
+        else if (screen == ScreenKind.Help) DrawHelp();
+        else if (screen == ScreenKind.SeedEntry) DrawSeedEntry(seedInput);
+        else if (screen == ScreenKind.RunHistory) DrawRunHistory(historyRecords ?? Array.Empty<RunRecord>(), historyScrollOffset);
+    }
+
+    private void DrawTitleMenu(int titleMenuIndex, int? savedSeed = null)
+    {
+        string[] items = { "Continue", "New Run", "New Run With Seed", "Run History", "Help", "Quit" };
+        for (int i = 0; i < items.Length; i++)
         {
-            text.DrawString("Press Enter to start", new Point(360, 150), Color.White);
-            text.DrawString("H for help", new Point(400, 170), Color.LightGray);
+            Color color = i == titleMenuIndex ? Color.White : Color.LightGray;
+            text.DrawString(items[i], new Point(400, 150 + i * 20), color);
         }
-        else if (screen == ScreenKind.GameOver && stats is not null)
+        // Show seed if a run is saved
+        if (savedSeed.HasValue)
+            text.DrawString($"  Seed: {savedSeed}", new Point(450, 150), Color.LightGray);
+    }
+
+    private void DrawGameOver(RunStats stats)
+    {
+        text.DrawString($"Cause: {stats.CauseOfDeath ?? "unknown"}", new Point(330, 150), Color.White);
+        text.DrawString($"Depth {stats.MaxDepth}", new Point(330, 168), Color.White);
+        text.DrawString($"Turns {stats.TurnsSurvived}  Kills {stats.MonstersSlain}", new Point(330, 186), Color.White);
+        text.DrawString($"Picked up {stats.ItemsPickedUp}  Damage dealt {stats.DamageDealt}", new Point(330, 204), Color.White);
+        text.DrawString("R restart   Esc title", new Point(370, 238), Color.Gold);
+    }
+
+    private void DrawPauseMenu(int pauseMenuIndex)
+    {
+        string[] menu = { "Resume", "Save and Quit", "Abandon Run", "Help", "Quit to Title" };
+        for (int i = 0; i < menu.Length; i++)
         {
-            text.DrawString($"Cause: {stats.CauseOfDeath ?? "unknown"}", new Point(330, 150), Color.White);
-            text.DrawString($"Depth {stats.MaxDepth}", new Point(330, 168), Color.White);
-            text.DrawString($"Turns {stats.TurnsSurvived}  Kills {stats.MonstersSlain}", new Point(330, 186), Color.White);
-            text.DrawString($"Picked up {stats.ItemsPickedUp}  Damage dealt {stats.DamageDealt}", new Point(330, 204), Color.White);
-            text.DrawString("R restart   Esc title", new Point(370, 238), Color.Gold);
+            Color color = i == pauseMenuIndex ? Color.White : Color.LightGray;
+            text.DrawString(menu[i], new Point(380, 150 + i * 20), color);
         }
-        else if (screen == ScreenKind.Paused)
+    }
+
+    private void DrawHelp()
+    {
+        string[] lines = { "Arrows/WASD/8426 move", "Space wait   I inventory", "Enter use/equip   D drop",
+            "Esc pause/close   H help", "@ player  r/g/a/B monsters", "! potion  ? scroll  / weapon  [ armor  > stairs" };
+        for (int i = 0; i < lines.Length; i++) text.DrawString(lines[i], new Point(250, 145 + i * 18), Color.White);
+    }
+
+    private void DrawSeedEntry(string seedInput)
+    {
+        text.DrawString("Enter up to 9 digits for a specific seed", new Point(240, 150), Color.White);
+        text.DrawString("Enter empty for a random seed", new Point(270, 168), Color.White);
+        
+        // Draw input with cursor
+        int cursorX = 300 + (seedInput.Length * 8);
+        text.DrawString(seedInput, new Point(300, 200), Color.LimeGreen);
+        DrawRectangle(new Rectangle(cursorX, 200, 1, 12), Color.LimeGreen); // Cursor
+        
+        text.DrawString("Enter start   BackSpace delete   Esc back", new Point(200, 240), Color.LightGray);
+    }
+
+    private void DrawRunHistory(IReadOnlyList<RunRecord> allRecords, int scrollOffset)
+    {
+        if (allRecords.Count == 0)
         {
-            string[] menu = { "Resume", "Restart", "Help", "Quit" };
-            for (int i = 0; i < menu.Length; i++)
-                text.DrawString(menu[i], new Point(400, 150 + i * 20), Color.White);
+            text.DrawString("NO RUNS YET", new Point(350, 250), Color.White);
+            text.DrawString("Esc back", new Point(420, 300), Color.LightGray);
+            return;
         }
-        else if (screen == ScreenKind.Help)
+        
+        var topRecords = RunRanking.Top(allRecords).ToList();
+        int maxScroll = Math.Max(0, topRecords.Count - 10);
+        int start = Math.Min(scrollOffset, maxScroll);
+        int end = Math.Min(start + 10, topRecords.Count);
+        
+        // Header
+        text.DrawString("RANK  DEPTH  LVL  TURNS  KILLS  CAUSE                       SEED       DATE", 
+            new Point(20, 140), Color.Gold);
+        
+        int y = 158;
+        for (int i = start; i < end; i++)
         {
-            string[] lines = { "Arrows/WASD/8426 move", "Space wait   I inventory", "Enter use/equip   D drop",
-                "Esc pause/close   H help", "@ player  r/g/a/B monsters", "! potion  ? scroll  / weapon  [ armor  > stairs" };
-            for (int i = 0; i < lines.Length; i++) text.DrawString(lines[i], new Point(250, 145 + i * 18), Color.White);
+            RunRecord record = topRecords[i];
+            int rank = i + 1;
+            
+            string cause = TextLayout.Truncate(record.CauseOfDeath, 20);
+            string seedStr = record.Seed.ToString("D9");
+            string dateStr = record.DateUtc.ToString("yyyy-MM-dd HH:mm");
+            
+            string line = $"#{rank:D2}   {record.DepthReached:D2}      {record.Level:D2}    {record.Turns:D4}    {record.Kills:D3}    {cause,-20}  {seedStr}  {dateStr}";
+            line = TextLayout.Truncate(line, 90);
+            text.DrawString(line, new Point(20, y), Color.White);
+            y += text.LineHeight + 2;
         }
+        
+        if (topRecords.Count > 10)
+            text.DrawString($"({start + 1}-{end} of {topRecords.Count})   Esc back   Up/Down scroll", 
+                new Point(200, 635), Color.LightGray);
+        else
+            text.DrawString("Esc back", new Point(430, 635), Color.LightGray);
     }
 
     private void DrawGlyph(char glyph, Point tile, Color color)
